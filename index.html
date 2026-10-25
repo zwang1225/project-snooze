@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>project-snooze · 原型 MVP 1</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h1>project-snooze <small>原型 MVP 1（内部代号，非产品名）</small></h1>
+<p id="phase-label">选狗</p>
+
+<div id="setup">
+  <h2>选一只狗当主角</h2>
+  <div id="breed-box">
+    <button data-breed="pomeranian">博美（光线 · 鼻子）</button>
+    <button data-breed="husky">哈士奇（冰线 · 蛮力）</button>
+    <button data-breed="shiba">柴犬（影线 · 怪味）</button>
+  </div>
+  <p>
+    名字（可跳过，默认用品种名）：<input id="name-input" type="text" maxlength="12" placeholder="比如：阿金">
+    <button id="btn-start">睡过去，开第一场梦</button>
+  </p>
+  <p class="hint">开局提示：先按“闻一闻”，选一个味点，再按“刨！”。60 秒内第一次进化。</p>
+</div>
+
+<div id="game" style="display:none">
+  <canvas id="scene" width="480" height="300"></canvas>
+  <p id="hud"></p>
+  <p>
+    <button id="btn-meadow">回草地</button>
+    <button id="btn-snowfield">雪原（第一次醒来后解锁）</button>
+    <button id="btn-codex">图鉴</button>
+    <button id="btn-reset">重开（清存档）</button>
+  </p>
+  <p id="scene-note"></p>
+
+  <div id="dream-panel">
+    <h2>梦里</h2>
+    <p>
+      <button id="btn-sniff">闻一闻</button>
+      <button id="btn-dig">刨！</button>
+      <button id="btn-pet">摸摸它（点狗计数）</button>
+      <button id="btn-wake">醒来（手动结算）</button>
+    </p>
+    <div id="scent-box"></div>
+    <p>
+      <button id="btn-spend">花骨头：20 根 → 本梦刨力 +1（马上变强）</button>
+      <button id="btn-bury">埋骨头：埋 10 根，60 秒后挖出变多</button>
+    </p>
+    <p id="bury-status"></p>
+    <p class="hint">第二层：第一层挖空（300 根）后显示为锁定，原型不做更深的层。</p>
+  </div>
+
+  <div id="wake-panel" style="display:none">
+    <h2>醒着（现实小屋）</h2>
+    <p id="wake-breakdown"></p>
+    <h3>升级家当（花结算资源，不占醒来名额；MVP 每线升 1 级）</h3>
+    <div id="upgrade-box"></div>
+    <h3>吃 1 格</h3>
+    <div id="eat-box"></div>
+    <h3>玩 1 格</h3>
+    <div id="play-box"></div>
+    <h3>睡 1 格</h3>
+    <div id="sleep-box"></div>
+    <p id="sleep-note"></p>
+    <p><button id="btn-sleep">睡过去，开下一场梦</button></p>
+  </div>
+
+  <div id="codex-panel" style="display:none">
+    <h2>图鉴</h2>
+    <div id="codex-box"></div>
+  </div>
+
+  <h2>日志</h2>
+  <pre id="log"></pre>
+</div>
+
+<script src="js/storage.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
