@@ -111,7 +111,7 @@ let scentsRevealed = false;
 // dog's feet land at y=250. The dog roams when nothing is selected
 // and RUNS to the selected scent point's x when one is picked.
 const DOG_BOX = 150, DOG_TOP = 100;
-let dogX = 210, dogTargetX = null, dogPauseUntil = 0;
+let dogX = 210, dogTargetX = null, dogPauseUntil = 0, dogMicroX = null;
 let dogSpeedPxS = 0; // D19: current movement speed (0 idle, 55 wander, 320 run)
 let holes = []; // {x} — dig pits dug this dream, drawn on the ground
 let particles = []; // {kind:'dirt'|'heart', x, y, vx, vy, born, life}
@@ -262,7 +262,25 @@ if (selectedPoint) {
 dogPauseUntil = 0;
 const target = selectedPoint.x;
 const step = 320 * dtMs / 1000;
-if (Math.abs(target - dogX) <= step) { dogX = target; dogSpeedPxS = 0; return; }
+if (Math.abs(target - dogX) <= step) {
+// Arrived: sniff around the point instead of freezing. Before this,
+// an arrived dog stood dead still for the rest of the dream, so the
+// wander state was nearly unobservable in normal play (a point is
+// selected almost immediately). Micro-wander stays within +/-14px
+// of the point at a slow 20px/s, so holes still land at the point.
+if (dogMicroX === null) dogMicroX = target;
+const mStep = 20 * dtMs / 1000;
+if (Math.abs(dogMicroX - dogX) <= mStep) {
+dogX = dogMicroX;
+dogMicroX = target - 14 + Math.random() * 28;
+dogSpeedPxS = 0;
+return;
+}
+dogX += Math.sign(dogMicroX - dogX) * mStep;
+dogSpeedPxS = 20;
+return;
+}
+dogMicroX = null;
 dogX += Math.sign(target - dogX) * step;
 dogSpeedPxS = 320;
 return;
@@ -416,7 +434,7 @@ if (x >= box.left && x <= box.left + box.size && y >= box.top && y <= box.top + 
 
 function petDog() {
 const now = Date.now();
-petReactUntil = now + 1200; // happy bounce, held longer so the squash reads
+petReactUntil = now + 2000; // happy bounce, held so the squash reads across views
 petWagUntil = now + 2000; // faster tail wag for a moment
 for (let i = 0; i < 3; i++) {
 particles.push({ kind: 'heart', x: dogX - 20 + i * 20, y: 130,
@@ -488,7 +506,7 @@ if (!selectedPoint) { log('先闻一闻，再选一个味点。'); return;}
 const now = Date.now();
 if (now - lastDigAt < selectedPoint.cooldownMs) return;
 lastDigAt = now;
-digAnimUntil = now + 500;
+digAnimUntil = now + 1200; // pose window only; dig cooldown stays on lastDigAt
 const got = digYield(selectedPoint);
 // Visible dig feedback (numbers unchanged): a pit at the dog's spot,
 // flying dirt, and a bone sprite that pops out and flies to the counter.
@@ -661,7 +679,7 @@ scentsRevealed = false;
 // Fresh dream, fresh ground: pits, particles and flying bones reset,
 // and the dog starts back at the center of the scene.
 holes = []; particles = []; flyingBones = [];
-dogX = 210; dogTargetX = null; dogPauseUntil = 0;
+dogX = 210; dogTargetX = null; dogPauseUntil = 0; dogMicroX = null;
 petReactUntil = 0; petWagUntil = 0;
 hideEvolutionBanner();
 rollScentPoints();
