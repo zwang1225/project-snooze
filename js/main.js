@@ -115,7 +115,16 @@ let scentPoints = []; // world pits: {type, label, hint, bones, cooldownMs, x, y
 let lastDigAt = 0;
 let autoOn = false; // dream-scoped toggle; the unlock (S.autoUnlocked) persists
 let keysDown = new Set();
-let dogTarget = null; // {x, y} click-to-move destination, feet coords
+let dogTarget = null; // {x, y} touch-only tap-to-move destination, feet coords
+// D23 body-first input: WASD steers, C toggles mouse-follow, the mouse
+// no longer moves the dog on desktop. Tap-to-move survives only on
+// coarse-pointer (touch) devices, where there is no keyboard: without
+// it a phone could not play at all.
+const IS_TOUCH = typeof window !== 'undefined' &&
+typeof window.matchMedia === 'function' &&
+window.matchMedia('(pointer: coarse)').matches;
+let followMode = false; // C toggles: dog steers toward pointerPos
+let pointerPos = null; // {x, y} latest canvas pointer position, feet coords
 let dogWander = null; // {x, y} idle-roam destination
 let digAnimUntil = 0;
 let lastBuryLog = '';
@@ -126,8 +135,9 @@ let scentsRevealed = false;
 // Interaction pass (visual feedback only — no rules live here).
 // Dog position is visible state on the 960x600 canvas: the dog box is
 // 150x150, dogX is the box CENTER x, dogY is the FEET y on the ground
-// band (215-275). D21: the dog walks the ground freely (click-to-move
-// + WASD); scent points are world pits it walks up to.
+// band (430-550). D23: the dog walks the ground freely (WASD +
+// C mouse-follow; touch tap-to-move only); scent points are world
+// pits it walks up to and digs by standing there.
 const DOG_BOX = 150;
 let dogX = 480, dogY = 490, dogPauseUntil = 0, dogMicroX = null;
 let dogSpeedPxS = 0; // D19: current movement speed (0 idle, 55 wander, 320 run)
@@ -312,13 +322,13 @@ dogPauseUntil = now + 1000 + Math.random() * 2000;
 }
 }
 
-// Dog motion (D21): manual keys take over, then auto mode, then the
-// click-to-move destination, then idle roaming. Called every frame with
-// an explicit dt so it is deterministic under test.
+// Dog motion (D23): manual keys take over, then mouse-follow, then auto
+// mode, then the touch tap-to-move destination, then idle roaming.
+// Called every frame with an explicit dt so it is deterministic under test.
 function updateDogMotion(now, dtMs) {
 if (S.phase !== 'dream') { dogSpeedPxS = 0; return; }
 const dt = dtMs / 1000;
-// Manual keys (WASD/arrows) take over and switch auto off.
+// Manual keys (WASD/arrows) take over and switch auto and follow off.
 let kx = 0, ky = 0;
 if (keysDown.has('left')) kx -= 1;
 if (keysDown.has('right')) kx += 1;
@@ -326,6 +336,7 @@ if (keysDown.has('up')) ky -= 1;
 if (keysDown.has('down')) ky += 1;
 if (kx || ky) {
 if (autoOn) setAuto(false, true);
+followMode = false;
 dogTarget = null;
 dogWander = null;
 const len = Math.hypot(kx, ky);
@@ -334,13 +345,22 @@ dogY = clamp(dogY + ky / len * WALK_SPEED * dt, DOG_Y_MIN, DOG_Y_MAX);
 dogSpeedPxS = WALK_SPEED;
 return;
 }
-// Auto mode: walk to the nearest ordinary pit and dig it; strange pits
-// are never auto-targeted (D1 red line: special points stay player-picked).
+// Mouse-follow mode (C): steer toward the pointer; no pointer yet
+// means stand still (do not wander off while the player is aiming).
+if (followMode) {
+if (!pointerPos) { dogSpeedPxS = 0; return; }
+moveToward(pointerPos.x, pointerPos.y, dt);
+return;
+}
+// Auto mode: walk to the nearest ordinary pit; digging itself is the
+// shared walk-to-dig rule (tryWalkDig), not an auto-only call, so the
+// manual and auto paths can never drift apart. Strange pits are never
+// auto-targeted (D1 red line: special points stay player-picked).
 if (autoOn) {
 const pit = nearestPit((q) => q.type !== 'strange');
 if (!pit) { wander(now, dt); return; }
 if (moveToward(pit.x, pit.y, dt)) {
-// Arrived: sniff around the pit, dig when the cooldown allows.
+// Arrived: sniff around the pit while the walk-to-dig rule digs it.
 if (dogMicroX === null) dogMicroX = pit.x;
 const mStep = 20 * dt;
 if (Math.abs(dogMicroX - dogX) <= mStep) {
@@ -351,18 +371,34 @@ dogSpeedPxS = 0;
 dogX += Math.sign(dogMicroX - dogX) * mStep;
 dogSpeedPxS = 20;
 }
-if (Date.now() - lastDigAt >= pit.cooldownMs) doDig(pit);
 return;
 }
 dogMicroX = null;
 return;
 }
-// Click-to-move destination.
+// Touch tap-to-move destination (desktop clicks never set this).
 if (dogTarget) {
 if (moveToward(dogTarget.x, dogTarget.y, dt)) dogTarget = null;
 return;
 }
 wander(now, dt);
+}
+
+// Walk-to-dig rule (D23): standing by a revealed pit with its cooldown
+// ready digs it — no button press. Walking away stops digging because
+// the rule only fires while a pit is in range. Called once per frame
+// after updateDogMotion, so every way of arriving (keys, follow, auto,
+// touch) digs through the same path.
+function tryWalkDig() {
+if (S.phase !== 'dream' || !scentsRevealed) return;
+const pit = nearestPitInRange();
+if (!pit) return;
+// D1 red line, preserved under the new trigger: auto mode walks past
+// strange pits on its way to ordinary ones, but must never dig them —
+// a strange pit only digs when the player walked there themself.
+if (autoOn && pit.type === 'strange') return;
+if (Date.now() - lastDigAt < pit.cooldownMs) return;
+doDig(pit);
 }
 
 function drawScene() {
@@ -375,7 +411,7 @@ ctx.fillRect(0, 400, canvas.width, canvas.height - 400);
 
 // Pit markers on the ground (visible targets the dog walks up to).
 // Colors: strong amber, light green, strange purple; the pit in dig
-// range gets a ring so the player knows "刨！" will hit it.
+// range gets a ring so the player knows standing here digs it.
 if (scentsRevealed) {
 const colors = { strong: '#c96a2b', light: '#7fb069', strange: '#9b5de5' };
 const active = nearestPitInRange();
@@ -485,27 +521,63 @@ ctx.fillRect(x, y, 3, 3);
 }
 
 // Clicking the dog counts as a tap (H02 counter). The Pet button does the same.
-// Clicking anywhere else is a move order: the dog walks there (and manual
-// orders switch auto off). The click box follows the roaming dog.
+// Clicking anywhere else does NOT move the dog on desktop (D23: the mouse
+// points at panels and the dog, it does not steer); on touch devices a
+// tap elsewhere is a move order, the only steering a phone has. The
+// click box follows the roaming dog.
+function canvasCoords(e) {
+const r = canvas.getBoundingClientRect();
+return {
+x: (e.clientX - r.left) * (canvas.width / r.width),
+y: (e.clientY - r.top) * (canvas.height / r.height),
+};
+}
 canvas.addEventListener('click', (e) => {
 if (S.phase!== 'dream') return;
-const r = canvas.getBoundingClientRect();
-const x = (e.clientX - r.left) * (canvas.width / r.width);
-const y = (e.clientY - r.top) * (canvas.height / r.height);
+const { x, y } = canvasCoords(e);
 const box = dogBox();
 if (x >= box.left && x <= box.left + box.size && y >= box.top && y <= box.top + box.size) { petDog(); return; }
+if (!IS_TOUCH) return;
 if (autoOn) setAuto(false, true);
+followMode = false;
 dogTarget = { x: clamp(x, DOG_X_MIN, DOG_X_MAX), y: clamp(y, DOG_Y_MIN, DOG_Y_MAX) };
 dogWander = null;
 });
+// Pointer tracking for mouse-follow mode (mousemove on desktop,
+// touchmove so a finger drag can also steer in follow mode).
+canvas.addEventListener('mousemove', (e) => {
+if (S.phase !== 'dream') return;
+const { x, y } = canvasCoords(e);
+pointerPos = { x: clamp(x, DOG_X_MIN, DOG_X_MAX), y: clamp(y, DOG_Y_MIN, DOG_Y_MAX) };
+});
+canvas.addEventListener('touchmove', (e) => {
+if (S.phase !== 'dream') return;
+const t = e.touches && e.touches[0];
+if (!t) return;
+const { x, y } = canvasCoords(t);
+pointerPos = { x: clamp(x, DOG_X_MIN, DOG_X_MAX), y: clamp(y, DOG_Y_MIN, DOG_Y_MAX) };
+}, { passive: true });
 
-// WASD / arrows steer the dog directly (desktop); ignored outside dreams
-// so typing in the setup name field is never hijacked.
+// WASD / arrows steer the dog directly; C toggles mouse-follow mode.
+// Ignored outside dreams so typing in the setup name field is never hijacked.
 const KEY_DIRS = { w: 'up', a: 'left', s: 'down', d: 'right',
 arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right' };
+function toggleFollow() {
+followMode = !followMode;
+if (followMode) {
+if (autoOn) setAuto(false, true);
+dogTarget = null;
+dogWander = null;
+}
+log(followMode ? '跟随鼠标：开（狗朝鼠标位置走；再按 C 关）' : '跟随鼠标：关。');
+renderHUD();
+}
 document.addEventListener('keydown', (e) => {
-const dir = KEY_DIRS[e.key.toLowerCase()];
-if (!dir || S.phase !== 'dream') return;
+if (S.phase !== 'dream') return;
+const k = e.key.toLowerCase();
+if (k === 'c') { toggleFollow(); return; }
+const dir = KEY_DIRS[k];
+if (!dir) return;
 e.preventDefault();
 keysDown.add(dir);
 });
@@ -557,19 +629,9 @@ hideEvolutionBanner();
 scentsRevealed = true;
 rollScentPoints();
 gainXp(XP_PER_SNIFF);
-log('闻到了 ' + scentPoints.length + ' 个坑：走过去，靠近按“刨！”开挖。');
+log('闻到了 ' + scentPoints.length + ' 个坑：走过去，走进坑就开挖。');
 save();
 renderHUD();
-}
-
-function goToPit(i) {
-// Pit-list shortcut: a manual move order to that pit (switches auto off).
-const pit = scentPoints[i];
-if (!pit) return;
-if (autoOn) setAuto(false, true);
-dogTarget = { x: pit.x, y: pit.y };
-dogWander = null;
-log('走过去：' + pit.label + '（' + pit.hint + '）。靠近后按“刨！”开挖。');
 }
 
 function digYield(point) {
@@ -586,8 +648,9 @@ return bones;
 }
 
 function doDig(pitArg) {
-// Digs the given pit (auto mode) or the nearest pit in range (manual).
-// Digging at a pit you are not standing next to is not possible.
+// Digs the given pit; only ever called by the walk-to-dig rule, which
+// has already checked range and cooldown. Digging at a pit you are not
+// standing next to is not possible.
 hideEvolutionBanner();
 const pit = pitArg || nearestPitInRange();
 if (!pit) { log('走近一个坑再刨（先闻一闻找出坑）。'); return;}
@@ -624,6 +687,7 @@ renderHUD();
 function setAuto(on, manual) {
 if (on && !S.autoUnlocked) return;
 autoOn = on;
+if (on) followMode = false; // one driver at a time: auto or follow, never both
 if (!on) dogMicroX = null;
 if (manual) log('手动接管，自动已关。');
 renderHUD();
@@ -793,6 +857,7 @@ scentsRevealed = false;
 // and the dog starts back at the center of the scene.
 holes = []; particles = []; flyingBones = [];
 dogX = 480; dogY = 490; dogTarget = null; dogWander = null;
+followMode = false; pointerPos = null;
 dogPauseUntil = 0; dogMicroX = null; autoOn = false;
 petReactUntil = 0; petWagUntil = 0;
 hideEvolutionBanner();
@@ -856,8 +921,10 @@ return '推不动就按“醒来”结算';
 function renderHUD() {
 const dogName = S.name || (S.breed && BREEDS[S.breed] ? BREEDS[S.breed].name : '');
 // Pits stay hidden until the first sniff of a dream; sniffing
-// reveals them (and re-rolls on later sniffs). Buttons are walk-to
-// shortcuts; digging still needs the dog standing next to the pit.
+// reveals them (and re-rolls on later sniffs). Digging is walk-to-dig
+// (D23): standing by a pit digs it, no button.
+const hudEl = $('hud');
+if (hudEl) hudEl.textContent = dogName + ' ' +
 String(S.stage).padStart(3, '0') + ' ' + stageName() + ' ' +
 ' 骨头 ' + S.bones +
 ' | 刨力 +' + S.digPower +
@@ -874,20 +941,21 @@ bar.style.width = S.stage >= 3
 ? '100%'
 : Math.min(100, Math.round(S.xp / xpNeed() * 1000) / 10) + '%';
 }
-const digBtn = $('btn-dig');
-if (digBtn) {
-const pit = nearestPitInRange();
-const remain = pit ? Math.max(0, pit.cooldownMs - (Date.now() - lastDigAt)) : 0;
-digBtn.disabled = !pit || remain > 0;
-digBtn.textContent = pit && remain > 0 ? '刨！（冷却 ' + (remain / 1000).toFixed(1) + ' 秒）' : '刨！';
-}
 const dogStatus = $('dog-status');
 if (dogStatus) {
+const pit = nearestPitInRange();
 if (autoOn) dogStatus.textContent = '状态：自动开，狗自己走、自己找普通坑刨。';
-else if (nearestPitInRange()) dogStatus.textContent = '状态：狗在坑边嗅探，按“刨！”开挖。';
+else if (pit) {
+const remain = Math.max(0, pit.cooldownMs - (Date.now() - lastDigAt));
+dogStatus.textContent = remain > 0
+? '状态：狗在坑边刨坑（冷却 ' + (remain / 1000).toFixed(1) + ' 秒）'
+: '状态：狗在坑边刨坑。';
+}
+else if (followMode) dogStatus.textContent = '状态：跟随鼠标走。';
 else if (dogTarget) dogStatus.textContent = '状态：狗正在走过去。';
 else dogStatus.textContent = '状态：狗在闲逛。';
 }
+updateSceneArrows();
 const objEl = $('next-objective');
 if (objEl) objEl.textContent = S.pinned ? '已钉目标：' + S.pinned : '下一步：' + autoObjective();
 const pinBtn = $('btn-pin');
@@ -986,6 +1054,25 @@ box.appendChild(div);
 });
 }
 
+// Scene edge arrows (D23): cycle through unlocked scenes only, so the
+// snowfield arrow never appears before the first wake unlocks it.
+function updateSceneArrows() {
+const prev = $('btn-scene-prev'), next = $('btn-scene-next');
+if (!prev || !next) return;
+const show = S.phase === 'dream' && S.scenesUnlocked.length > 1;
+prev.style.display = show ? 'block' : 'none';
+next.style.display = show ? 'block' : 'none';
+}
+function cycleScene(dir) {
+const list = S.scenesUnlocked;
+if (list.length < 2) return;
+const i = list.indexOf(S.scene);
+S.scene = list[(i + dir + list.length) % list.length];
+save();
+renderAll();
+log('场景：' + (S.scene === 'snowfield' ? '雪原' : '草地'));
+}
+
 function renderAll() {
 // The frame is always sized (aspect-ratio); the setup overlay covers it
 // in the setup phase, and the wake overlay covers it in the wake phase.
@@ -998,6 +1085,7 @@ S.phase === 'dream'? '梦里（' + (S.scene === 'snowfield'? '雪原': '草地')
 S.phase === 'wake'? '醒着（现实小屋）': '选狗';
 if (S.phase === 'dream') { renderHUD(); drawScene();}
 if (S.phase === 'wake') { renderWake();}
+updateSceneArrows();
 renderCodex();
 }
 
@@ -1025,7 +1113,6 @@ b.onclick = () => pickBreed(b.dataset.breed);
 });
 $('btn-start').onclick = startGame;
 $('btn-sniff').onclick = doSniff;
-$('btn-dig').onclick = doDig;
 $('btn-spend').onclick = doSpend;
 $('btn-bury').onclick = doBury;
 $('btn-wake').onclick = doWake;
@@ -1051,8 +1138,8 @@ $('btn-reset').onclick = () => { $('confirm-panel').style.display = 'block'; };
 $('btn-confirm-reset').onclick = () => { StorageAdapter.clear(); location.reload(); };
 $('btn-cancel-reset').onclick = () => { $('confirm-panel').style.display = 'none'; };
 $('btn-dismiss-banner').onclick = hideEvolutionBanner;
-$('btn-meadow').onclick = () => { S.scene = 'meadow'; save(); renderAll();};
-$('btn-snowfield').onclick = () => { S.scene = 'snowfield'; save(); renderAll();};
+$('btn-scene-prev').onclick = () => cycleScene(-1);
+$('btn-scene-next').onclick = () => cycleScene(1);
 $('btn-sleep').onclick = applyWakePicks;
 
 // Tick: buried maturity, HUD refresh, canvas redraw.
@@ -1072,6 +1159,7 @@ if (S.phase === 'dream') {
 const dt = lastFrameAt ? now - lastFrameAt : 16;
 lastFrameAt = now;
 updateDogMotion(now, dt);
+tryWalkDig();
 drawScene();
 } else {
 lastFrameAt = 0;

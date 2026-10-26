@@ -20,6 +20,11 @@ button:disabled { cursor: default; opacity: 0.5; }
 #xp-bar-wrap { background: #ddd; height: 12px; margin: 4px 0; }
 #xp-bar { background: #4caf50; height: 12px; width: 0%; }
 
+/* Scene arrows: thin edge controls inside the frame (D23: no scene tabs). */
+.scene-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 9; font-size: 30px; line-height: 1; padding: 10px 12px; background: rgba(255, 255, 255, 0.75); border: 1px solid #999; }
+.scene-arrow.left { left: 6px; }
+.scene-arrow.right { right: 6px; }
+
 /* Evolution banner floats below the HUD bar, inside the frame. */
 #evolution-banner { position: absolute; top: 118px; left: 50%; transform: translateX(-50%); z-index: 11; background: #ffe97a; border: 3px solid #e67e22; padding: 10px 12px; font-size: 20px; font-weight: bold; white-space: nowrap; }
 #next-hint { position: absolute; top: 178px; left: 50%; transform: translateX(-50%); z-index: 11; color: #555; background: rgba(255, 255, 255, 0.85); padding: 2px 8px; }

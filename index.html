@@ -20,11 +20,13 @@
       名字（可跳过，默认用品种名）：<input id="name-input" type="text" maxlength="12" placeholder="比如：阿金">
       <button id="btn-start">睡过去，开第一场梦</button>
     </p>
-    <p class="hint">开局提示：先按“闻一闻”找出坑，再让狗走过去、靠近按“刨！”。60 秒内第一次进化。</p>
+    <p class="hint">开局提示：先按“闻一闻”找出坑，再让狗走过去，走进坑就自动开挖。60 秒内第一次进化。</p>
   </div>
 
   <div id="game">
     <canvas id="scene" width="960" height="600"></canvas>
+    <button id="btn-scene-prev" class="scene-arrow left" style="display:none">‹</button>
+    <button id="btn-scene-next" class="scene-arrow right" style="display:none">›</button>
 
     <!-- top HUD bar, inside the frame -->
     <div id="hud-bar">
@@ -38,8 +40,6 @@
       </div>
       <div id="xp-bar-wrap"><div id="xp-bar"></div></div>
       <div id="menu-row">
-        <button id="btn-meadow">回草地</button>
-        <button id="btn-snowfield">雪原（第一次醒来后解锁）</button>
         <button id="btn-codex">图鉴</button>
         <button id="btn-howto">玩法</button>
         <button id="btn-log">日志</button>
@@ -56,7 +56,6 @@
       <p id="dog-status"></p>
       <p>
         <button id="btn-sniff">闻一闻</button>
-        <button id="btn-dig">刨！</button>
         <button id="btn-pet">摸摸它（点狗计数）</button>
         <button id="btn-auto">自动</button>
         <button id="btn-wake">醒来（手动结算）</button>
@@ -66,8 +65,7 @@
         <button id="btn-bury">埋骨头：埋 10 根，60 秒后挖出变多</button>
       </p>
       <p id="bury-status"></p>
-      <p class="hint">点画面空白处让狗走过去，WASD / 方向键也能走；走近坑按“刨！”。点画面里的狗是摸摸它。自动买断后，狗会自己走、自己找普通坑刨。</p>
-      <p class="hint">第二层：第一层挖空（300 根）后显示为锁定，原型不做更深的层。</p>
+      <p class="hint">WASD 走 · C 跟随鼠标 · 点狗是摸 · 走进坑就开挖，走开即停。第二层：第一层挖空（300 根）后显示为锁定，原型不做更深的层。</p>
     </div>
 
     <!-- wake overlay panel, inside the frame -->
@@ -105,8 +103,8 @@
         <h2>玩法</h2>
         <ol>
           <li>闻：按“闻一闻”找出坑（味浓土硬出大货慢、味淡土松出快货少、味怪未知）。</li>
-          <li>走：点画面空白处或按 WASD，让狗走过去；走近坑出现黄圈。</li>
-          <li>刨：黄圈内按“刨！”挖骨头；骨头能花（刨力 +1）或埋（60 秒后变多）。</li>
+          <li>走：WASD / 方向键走路，或按 C 切跟随鼠标；触屏点画面走过去。走近坑出现黄圈。</li>
+          <li>刨：走进坑就自动开挖，站在坑上按冷却重复挖；骨头能花（刨力 +1）或埋（60 秒后变多）。</li>
           <li>醒：推不动就按“醒来”结算；醒来选吃 1 格、玩 1 格、睡 1 格，再睡过去开下一场梦。家当升级花结算资源，不占醒来名额。</li>
         </ol>
         <p>自动：第一次醒来后 100 根骨头一次买断，狗会自己走、自己找普通坑刨；味怪坑仍要你亲选。</p>
