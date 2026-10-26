@@ -112,6 +112,7 @@ let scentsRevealed = false;
 // and RUNS to the selected scent point's x when one is picked.
 const DOG_BOX = 150, DOG_TOP = 100;
 let dogX = 210, dogTargetX = null, dogPauseUntil = 0;
+let dogSpeedPxS = 0; // D19: current movement speed (0 idle, 55 wander, 320 run)
 let holes = []; // {x} — dig pits dug this dream, drawn on the ground
 let particles = []; // {kind:'dirt'|'heart', x, y, vx, vy, born, life}
 let flyingBones = []; // {x0, y0, x1, y1, born, dur, tier}
@@ -256,18 +257,20 @@ return { left: dogX - DOG_BOX / 2, top: DOG_TOP, size: DOG_BOX };
 // (walk to a random spot, pause, walk again). Called every frame with
 // an explicit dt so it is deterministic under test.
 function updateDogMotion(now, dtMs) {
-if (S.phase !== 'dream') return;
+if (S.phase !== 'dream') { dogSpeedPxS = 0; return; }
 if (selectedPoint) {
 dogPauseUntil = 0;
 const target = selectedPoint.x;
 const step = 320 * dtMs / 1000;
-if (Math.abs(target - dogX) <= step) { dogX = target; return; }
+if (Math.abs(target - dogX) <= step) { dogX = target; dogSpeedPxS = 0; return; }
 dogX += Math.sign(target - dogX) * step;
+dogSpeedPxS = 320;
 return;
 }
 if (dogTargetX === null) {
-if (now < dogPauseUntil) return;
+if (now < dogPauseUntil) { dogSpeedPxS = 0; return; }
 dogTargetX = 90 + Math.random() * 300; // wander within [90, 390]
+dogSpeedPxS = 0;
 return;
 }
 const step = 55 * dtMs / 1000;
@@ -275,9 +278,11 @@ if (Math.abs(dogTargetX - dogX) <= step) {
 dogX = dogTargetX;
 dogTargetX = null;
 dogPauseUntil = now + 1000 + Math.random() * 2000;
+dogSpeedPxS = 0;
 return;
 }
 dogX += Math.sign(dogTargetX - dogX) * step;
+dogSpeedPxS = 55;
 }
 
 function drawScene() {
@@ -342,6 +347,7 @@ glow: S.stage >= 3,
 dx: box.left, dy: box.top,
 petBounce: now < petReactUntil,
 wagBoost: now < petWagUntil,
+speed: dogSpeedPxS,
 })) {
 const bob = now < digAnimUntil? Math.sin(now / 60) * 4: 0;
 drawDogSprite(ctx, S.breed, S.stage, 6, box.left + 39, 196 + bob, {
