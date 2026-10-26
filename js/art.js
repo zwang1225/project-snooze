@@ -201,7 +201,7 @@ function artKeyedFrame(key) {
 // Single-sourced: drawArtDog applies exactly these values, and the
 // test harness asserts on them. Visible sprite content sits well inside
 // the 150px box margins, so even the largest tilt/scale keeps every
-// visible pixel inside the 480x300 canvas (worst corner extent ~78px
+// visible pixel inside the 480x300 canvas (worst corner extent ~80px
 // against a minimum box-center of 90px from the edge).
 // st: { now, digging, rebound, speed, pet } — speed in px/s (0 idle,
 // ~55 wander, 320 run-to-point).
@@ -210,33 +210,39 @@ function dogBodyTransform(st) {
   let tilt = 0, scaleX = 1, scaleY = 1, bob = 0, wagMul = 1;
   if (st.digging) {
     // Dig: pitch forward + crouch, fast shovelling bob; rebound follows
-    // in the 300ms window after the dig window ends (see rebound branch).
-    tilt = 0.20 + Math.sin(st.now / 60) * 0.04;
-    scaleX = 1.06; scaleY = 0.88;
-    bob = Math.sin(st.now / 60) * 4;
+    // in the 700ms window after the dig window ends (see rebound branch).
+    // Amplified (was tilt 0.20 / scaleY 0.88): the old values fell below
+    // the perception threshold at normal play speed.
+    tilt = 0.45 + Math.sin(st.now / 60) * 0.08;
+    scaleX = 1.10; scaleY = 0.75;
+    bob = Math.sin(st.now / 60) * 7;
     wagMul = 1.4;
   } else if (st.rebound) {
-    // Rebound: brief overshoot past neutral, then settles into idle.
-    tilt = -0.04; scaleX = 0.97; scaleY = 1.05; bob = -2;
+    // Rebound: bigger overshoot past neutral, held longer, then settles.
+    tilt = -0.08; scaleX = 0.96; scaleY = 1.10; bob = -4;
   } else if (st.pet) {
     // Pet: squash bounce (compress on the beat, rebound off it) +
-    // slight head-up tilt. Hearts + tap counter live in main.js, untouched.
+    // head-up tilt. Amplified (was scaleY 0.90 / tilt -0.06) and the
+    // bounce window in main.js lengthened so it reads in consecutive
+    // views. Hearts + tap counter live in main.js, untouched.
     const beat = Math.abs(Math.sin(st.now / 110));
-    scaleY = 1 - 0.10 * beat; scaleX = 1 + 0.06 * beat;
-    tilt = -0.06; bob = -beat * 8; wagMul = 2.2;
+    scaleY = 1 - 0.20 * beat; scaleX = 1 + 0.10 * beat;
+    tilt = -0.12; bob = -beat * 14; wagMul = 2.2;
   } else if (st.speed > 0) {
     // Walk/run: bob amplitude, forward lean and tail speed all scale
     // with speed, so a run reads clearly bigger than a wander.
+    // Amplified (was bob ~3.1 -> 6.0, lean ~0.06 -> 0.14).
     const f = Math.min(1, st.speed / 320);
-    tilt = 0.04 + f * 0.10; // ~0.06 wander -> 0.14 run
-    bob = Math.sin(st.now / (st.speed >= 200 ? 70 : 110)) * (2.5 + f * 3.5);
-    scaleY = 1 + Math.sin(st.now / 130) * 0.01;
-    wagMul = 1 + f * 1.2; // ~1.2 wander -> 2.2 run
+    tilt = 0.08 + f * 0.20; // ~0.12 wander -> 0.28 run
+    bob = Math.sin(st.now / (st.speed >= 200 ? 70 : 110)) * (4 + f * 6);
+    scaleY = 1 + Math.sin(st.now / 130) * 0.02;
+    wagMul = 1.2 + f * 1.6; // ~1.5 wander -> 2.8 run
   } else {
-    // Idle: slow breathing — gentle vertical scale oscillation + soft bob,
-    // so the dog is never fully static.
-    scaleY = 1 + Math.sin(t * 2.2) * 0.02;
-    bob = Math.sin(t * 2.2) * 2;
+    // Idle: slow breathing — vertical scale oscillation + soft bob,
+    // so the dog is never fully static. Amplified (was scaleY ±0.02):
+    // the old breathing was invisible across views seconds apart.
+    scaleY = 1 + Math.sin(t * 2.2) * 0.05;
+    bob = Math.sin(t * 2.2) * 3.5;
   }
   return { tilt, scaleX, scaleY, bob, wagMul };
 }
@@ -261,7 +267,7 @@ function drawArtDog(ctx, breed, stage, opts) {
   const tr = dogBodyTransform({
     now: now,
     digging: digging,
-    rebound: !digging && now < digAnimUntil + 300,
+    rebound: !digging && now < digAnimUntil + 700,
     speed: speed,
     pet: !!opts.petBounce,
   });

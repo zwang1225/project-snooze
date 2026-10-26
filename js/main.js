@@ -416,7 +416,7 @@ if (x >= box.left && x <= box.left + box.size && y >= box.top && y <= box.top + 
 
 function petDog() {
 const now = Date.now();
-petReactUntil = now + 650; // happy bounce
+petReactUntil = now + 1200; // happy bounce, held longer so the squash reads
 petWagUntil = now + 2000; // faster tail wag for a moment
 for (let i = 0; i < 3; i++) {
 particles.push({ kind: 'heart', x: dogX - 20 + i * 20, y: 130,
