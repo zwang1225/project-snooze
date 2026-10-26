@@ -101,12 +101,39 @@ let selectedPoint = null;
 let lastDigAt = 0;
 let digAnimUntil = 0;
 let lastBuryLog = '';
+// Readability: scent points stay hidden until the first sniff of a dream,
+// and the evolution banner stays up until dismissed or the next action.
+let scentsRevealed = false;
 
 function save() { StorageAdapter.save(S);}
 function $(id) { return document.getElementById(id);}
 function log(msg) {
 const el = $('log');
 el.textContent = msg + '\n' + el.textContent;
+// "Latest news" line right under the HUD: the newest message is visible
+// without scrolling to the bottom log, especially on phones.
+const latest = $('latest-msg');
+if (latest) latest.textContent = '最新消息：' + msg;
+}
+
+function showEvolutionBanner(prevName, newName) {
+const banner = $('evolution-banner');
+const text = $('evolution-banner-text');
+const hint = $('next-hint');
+if (!banner || !text) return;
+text.textContent = '进化！' + prevName + ' → ' + newName;
+banner.style.display = 'block';
+if (hint) {
+hint.textContent = '继续刨攒骨头，推不动就按醒来结算';
+hint.style.display = 'block';
+}
+}
+
+function hideEvolutionBanner() {
+const banner = $('evolution-banner');
+const hint = $('next-hint');
+if (banner) banner.style.display = 'none';
+if (hint) hint.style.display = 'none';
 }
 function unlockCodex(id, dreamScoped) {
 if (!S.codex[id]) {
@@ -122,9 +149,11 @@ function gainXp(n) {
 if (S.stage >= 3) return; // MVP slice caps at stage 003
 S.xp += n;
 while (S.stage < 3 && S.xp >= xpNeed()) {
+const prevName = stageName();
 S.xp -= xpNeed();
 S.stage += 1;
 log('进化！' + BREEDS[S.breed].name + '变成了' + stageName() + '。');
+showEvolutionBanner(prevName, stageName());
 }
 }
 
@@ -217,9 +246,12 @@ selectedPoint = null;
 }
 
 function doSniff() {
+// The banner gives way to the next action (it was shown by a previous one).
+hideEvolutionBanner();
+scentsRevealed = true;
 rollScentPoints();
 gainXp(XP_PER_SNIFF);
-log('闻到了 ' + scentPoints.length + ' 个味点：选一个，全队去刨。');
+log('闻到了 ' + scentPoints.length + ' 个味点：选一个，去刨。');
 save();
 renderDreamControls();
 }
@@ -243,6 +275,7 @@ return bones;
 }
 
 function doDig() {
+hideEvolutionBanner();
 if (!selectedPoint) { log('先闻一闻，再选一个味点。'); return;}
 const now = Date.now();
 if (now - lastDigAt < selectedPoint.cooldownMs) return;
@@ -325,6 +358,7 @@ unlockCodex('snowfield', false);
 log('雪原场景解锁：下场梦可选。');
 }
 S.phase = 'wake';
+hideEvolutionBanner();
 save();
 renderAll();
 }
@@ -404,6 +438,8 @@ S.seaDreamNext = false;
 wakePick = { eat: null, play: null, sleep: null };
 S.meteorNight = Math.random() < 0.15;
 if (S.meteorNight) unlockCodex('meteor-night', true);
+scentsRevealed = false;
+hideEvolutionBanner();
 rollScentPoints();
 // Default scene: meadow unless the player picked snowfield on the dream screen.
 save();
@@ -420,7 +456,7 @@ return Math.floor(s / 60) + '分' + String(s % 60).padStart(2, '0') + '秒';
 
 function renderHUD() {
 $('hud').textContent =
-stageName() + ' ' +
+String(S.stage).padStart(3, '0') + ' ' + stageName() + ' ' +
 ' 骨头 ' + S.bones +
 ' | 刨力 +' + S.digPower +
 ' | 经历 ' + S.xp + '/' + (S.stage < 3? xpNeed(): '满') +
@@ -429,6 +465,13 @@ stageName() + ' ' +
 ' | 梦时长 ' + fmtTime(dreamSeconds()) +
 ' | 摸了 ' + S.taps + ' 次' +
 (S.glitchUnlocked? ' | ERROR.PUP 已解锁': '');
+// XP progress bar toward the next evolution (100% at the 003 cap).
+const bar = $('xp-bar');
+if (bar) {
+bar.style.width = S.stage >= 3
+? '100%'
+: Math.min(100, Math.round(S.xp / xpNeed() * 1000) / 10) + '%';
+}
 const digBtn = $('btn-dig');
 if (digBtn) {
 const cd = selectedPoint? selectedPoint.cooldownMs: 0;
@@ -443,15 +486,26 @@ $('bury-status').textContent = buriedPending
 function renderDreamControls() {
 const box = $('scent-box');
 box.innerHTML = '';
+// Scent points stay hidden until the first sniff of this dream; sniffing
+// reveals them (and re-rolls on later sniffs).
+if (!scentsRevealed) {
+box.textContent = '按“闻一闻”找出味点。';
+} else {
 scentPoints.forEach((p, i) => {
 const b = document.createElement('button');
 const bonus = affinityBonus(S.breed, p.type);
 b.textContent = p.label + '（' + p.hint + '）' +
 (bonus? '（' + BREEDS[S.breed].line + '擅长 +' + bonus + '）' : '');
-b.disabled = selectedPoint === p;
+// Selected point: bright highlight + checkmark + "已选中".
+// It must never look disabled, so it stays clickable and full-opacity.
+if (selectedPoint === p) {
+b.className = 'selected';
+b.textContent += ' ✓ 已选中';
+}
 b.onclick = () => selectPoint(i);
 box.appendChild(b);
 });
+}
 $('scene-note').textContent =
 S.scene === 'snowfield'
 ? '雪原场景：冰线朋友与冻土隐藏出现率更高（原型仅展示倾向说明）。'
@@ -563,6 +617,7 @@ $('btn-spend').onclick = doSpend;
 $('btn-bury').onclick = doBury;
 $('btn-wake').onclick = doWake;
 $('btn-pet').onclick = petDog;
+$('btn-dismiss-banner').onclick = hideEvolutionBanner;
 $('btn-meadow').onclick = () => { S.scene = 'meadow'; save(); renderAll();};
 $('btn-snowfield').onclick = () => { S.scene = 'snowfield'; save(); renderAll();};
 $('btn-sleep').onclick = applyWakePicks;
