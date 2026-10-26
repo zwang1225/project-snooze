@@ -8,7 +8,6 @@ button:disabled { cursor: default; opacity: 0.5; }
 #log { background: #f4f4f4; padding: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
 #scent-box button, #eat-box button, #play-box button, #sleep-box button, #upgrade-box button { display: inline-block; }
 /* Selected scent point must read as SELECTED, never as disabled/locked. */
-#scent-box button.selected { border: 3px solid #f39c12; background: #fff8e1; opacity: 1; font-weight: bold; }
 #evolution-banner { background: #ffe97a; border: 3px solid #e67e22; padding: 10px 12px; font-size: 20px; font-weight: bold; margin: 8px 0; }
 #latest-msg { background: #eef6ff; border-left: 4px solid #4a90d9; padding: 6px 8px; }
 #xp-bar-wrap { background: #ddd; height: 12px; margin: 4px 0; }

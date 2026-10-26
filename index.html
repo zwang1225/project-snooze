@@ -21,7 +21,7 @@
     名字（可跳过，默认用品种名）：<input id="name-input" type="text" maxlength="12" placeholder="比如：阿金">
     <button id="btn-start">睡过去，开第一场梦</button>
   </p>
-  <p class="hint">开局提示：先按“闻一闻”，选一个味点，再按“刨！”。60 秒内第一次进化。</p>
+  <p class="hint">开局提示：先按“闻一闻”找出坑，再让狗走过去、靠近按“刨！”。60 秒内第一次进化。</p>
 </div>
 
 <div id="game" style="display:none">
@@ -45,6 +45,7 @@
       <button id="btn-sniff">闻一闻</button>
       <button id="btn-dig">刨！</button>
       <button id="btn-pet">摸摸它（点狗计数）</button>
+      <button id="btn-auto">自动</button>
       <button id="btn-wake">醒来（手动结算）</button>
     </p>
     <div id="scent-box"></div>
@@ -53,14 +54,14 @@
       <button id="btn-bury">埋骨头：埋 10 根，60 秒后挖出变多</button>
     </p>
     <p id="bury-status"></p>
-    <p class="hint">狗会在场景里走动；选了味点它会跑过去刨。点一下画面里的狗可以摸摸它。</p>
+    <p class="hint">点画面空白处让狗走过去，WASD / 方向键也能走；走近坑按“刨！”。点画面里的狗是摸摸它。自动买断后，狗会自己走、自己找普通坑刨。</p>
     <p class="hint">第二层：第一层挖空（300 根）后显示为锁定，原型不做更深的层。</p>
   </div>
 
   <div id="wake-panel" style="display:none">
     <h2>醒着（现实小屋）</h2>
     <p id="wake-breakdown"></p>
-    <h3>升级家当（花结算资源，不占醒来名额；MVP 每线升 1 级）</h3>
+    <h3>升级家当（花结算资源，不占醒来名额；每线可升至 5 级）</h3>
     <div id="upgrade-box"></div>
     <h3>吃 1 格</h3>
     <div id="eat-box"></div>

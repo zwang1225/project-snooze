@@ -40,17 +40,30 @@ const BURY_MATURE_MS = 60 * 1000; // placeholder: shortened for the prototype
 const SPEND_COST = 20; // bones -> +1 dig power for this dream
 const SPEND_POWER = 1;
 const FIRST_WAKE_BONUS = 100; // settlement, paid once
-const UPGRADE_COST = 100; // settlement per line, one level each in MVP
+const UPGRADE_BASE_COST = 100; // settlement for level 1->2; cost scales with level
+const UPGRADE_MAX_LEVEL = 5;
+const UPGRADE_LEVEL_NAMES = {
+bowl: ['破碗', '钢碗', '陶瓷碗', '慢食碗', '自动喂食机'],
+kennel: ['纸箱', '垫子', '木屋', '别墅', '庄园'],
+toy: ['破布', '球', '飞盘', '益智玩具', '玩具箱'],
+yard: ['没院子', '小院', '菜园', '花园', '大庄园'],
+};
+function upgradeCost(lineKey) { return UPGRADE_BASE_COST * S.upgrades[lineKey]; }
+const AUTO_COST = 100; // bones, one-time unlock after the first wake (placeholder)
+const DIG_RANGE = 40; // px: dog must be this close to a pit to dig it
+const WALK_SPEED = 160; // px/s: player-directed and auto walking
+const DOG_X_MIN = 75, DOG_X_MAX = 405; // dog box half-width 75
+const DOG_Y_MIN = 215, DOG_Y_MAX = 275; // feet y on the ground band
 const CODEX_NEW_BONUS = 50; // D10 placeholder
 const SHORT_DREAM_S = 180; // dreams under 3 minutes settle at 20%
 const GLITCH_TAPS = 999; // taps before the small chance starts
 const GLITCH_CHANCE = 0.01; // per tap after 999 (placeholder probability)
 
 const UPGRADE_LINES = [
-{ key: 'bowl', label: '饭盆', from: '破碗', to: '钢碗'},
-{ key: 'kennel', label: '狗窝', from: '纸箱', to: '垫子'},
-{ key: 'toy', label: '玩具', from: '破布', to: '球'},
-{ key: 'yard', label: '院子', from: '没院子', to: '小院'},
+{ key: 'bowl', label: '饭盆'},
+{ key: 'kennel', label: '狗窝'},
+{ key: 'toy', label: '玩具'},
+{ key: 'yard', label: '院子'},
 ];
 
 const CODEX = {
@@ -60,7 +73,7 @@ h02: { title: 'ERROR.PUP（乱码狗）', text: '全身花屏错位。它自己�
 'sea-dream': { title: '海梦事件', text: '连吃 3 次三文鱼，下一场梦开出隐藏海梦。'},
 'shadow-teaser': { title: '夜访影狗的影子', text: '见过它来过，还没见过它：夜里草地上一串湿脚印，远远闪过一个影子。H03 本体收服留后续版本。'},
 'dream-flower': { title: '梦花', text: '总在院子同一个角落转悠，那块地长出了一朵梦花。'},
-'cardboard-god': { title: '纸箱之神', text: '有狗别墅不住、连选 5 次纸箱睡，才能解锁。MVP 里狗窝最高只到垫子，此条仅记进度。'},
+'cardboard-god': { title: '纸箱之神', text: '拥有狗别墅（狗窝 4 级）后、连选 5 次纸箱睡，才能解锁。'},
 snowfield: { title: '雪原场景', text: '第一次醒来后解锁。雪原倾向：冰线朋友与冻土隐藏出现率更高。'},
 'meteor-night': { title: '流星夜', text: '随机夜晚，全场产出翻倍 10 分钟。'},
 };
@@ -88,6 +101,7 @@ wakes: 0, firstWakeBonusPaid: false,
 codex: { hero: true, 'riddle-h02': true},
 streaks: { salmon: 0, cardboard: 0, park: 0, yardCorner: 0},
 scenesUnlocked: ['meadow'],
+autoUnlocked: false,
 shadowTeaserSeen: false,
 };
 }
@@ -95,10 +109,13 @@ shadowTeaserSeen: false,
 let S = StorageAdapter.load() || freshSave();
 if (!S.version) S = freshSave();
 
-// Transient (not saved): current scent points, selection, dig cooldown, animation.
-let scentPoints = [];
-let selectedPoint = null;
+// Transient (not saved): current pits, dig cooldown, animation, movement.
+let scentPoints = []; // world pits: {type, label, hint, bones, cooldownMs, x, y}
 let lastDigAt = 0;
+let autoOn = false; // dream-scoped toggle; the unlock (S.autoUnlocked) persists
+let keysDown = new Set();
+let dogTarget = null; // {x, y} click-to-move destination, feet coords
+let dogWander = null; // {x, y} idle-roam destination
 let digAnimUntil = 0;
 let lastBuryLog = '';
 // Readability: scent points stay hidden until the first sniff of a dream,
@@ -107,11 +124,11 @@ let scentsRevealed = false;
 
 // Interaction pass (visual feedback only — no rules live here).
 // Dog position is visible state on the 480x300 canvas: the dog box is
-// 150x150 with its top at y=100, so dogX is the box CENTER x and the
-// dog's feet land at y=250. The dog roams when nothing is selected
-// and RUNS to the selected scent point's x when one is picked.
-const DOG_BOX = 150, DOG_TOP = 100;
-let dogX = 210, dogTargetX = null, dogPauseUntil = 0, dogMicroX = null;
+// 150x150, dogX is the box CENTER x, dogY is the FEET y on the ground
+// band (215-275). D21: the dog walks the ground freely (click-to-move
+// + WASD); scent points are world pits it walks up to.
+const DOG_BOX = 150;
+let dogX = 210, dogY = 250, dogPauseUntil = 0, dogMicroX = null;
 let dogSpeedPxS = 0; // D19: current movement speed (0 idle, 55 wander, 320 run)
 let holes = []; // {x} — dig pits dug this dream, drawn on the ground
 let particles = []; // {kind:'dirt'|'heart', x, y, vx, vy, born, life}
@@ -250,57 +267,101 @@ if (row[rx] === 'X') c.fillRect(Math.round(x - 2.5 * u) + rx * u, Math.round(y -
 }
 
 function dogBox() {
-return { left: dogX - DOG_BOX / 2, top: DOG_TOP, size: DOG_BOX };
+return { left: dogX - DOG_BOX / 2, top: dogY - DOG_BOX, size: DOG_BOX };
+}
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+// Walk toward (tx, ty) at WALK_SPEED; returns true on arrival.
+function moveToward(tx, ty, dt) {
+const dx = tx - dogX, dy = ty - dogY;
+const dist = Math.hypot(dx, dy);
+const step = WALK_SPEED * dt;
+if (dist <= step) { dogX = tx; dogY = ty; dogSpeedPxS = 0; return true; }
+dogX = clamp(dogX + dx / dist * step, DOG_X_MIN, DOG_X_MAX);
+dogY = clamp(dogY + dy / dist * step, DOG_Y_MIN, DOG_Y_MAX);
+dogSpeedPxS = WALK_SPEED;
+return false;
+}
+// Nearest revealed pit matching filter (or any pit); null when unrevealed.
+function nearestPit(filter) {
+if (!scentsRevealed) return null;
+let best = null, bestD = Infinity;
+scentPoints.forEach((p) => {
+if (filter && !filter(p)) return;
+const d = Math.hypot(p.x - dogX, p.y - dogY);
+if (d < bestD) { bestD = d; best = p; }
+});
+return best;
+}
+function nearestPitInRange() {
+const p = nearestPit(null);
+return p && Math.hypot(p.x - dogX, p.y - dogY) <= DIG_RANGE ? p : null;
+}
+// Idle roam: walk to a random ground spot, pause, walk again.
+function wander(now, dt) {
+if (now < dogPauseUntil) { dogSpeedPxS = 0; return; }
+if (!dogWander) {
+dogWander = { x: 90 + Math.random() * 300,
+y: DOG_Y_MIN + Math.random() * (DOG_Y_MAX - DOG_Y_MIN) };
+dogSpeedPxS = 0;
+return;
+}
+if (moveToward(dogWander.x, dogWander.y, dt)) {
+dogWander = null;
+dogPauseUntil = now + 1000 + Math.random() * 2000;
+}
 }
 
-// Dog motion: RUNS to the selected scent point, otherwise wanders
-// (walk to a random spot, pause, walk again). Called every frame with
+// Dog motion (D21): manual keys take over, then auto mode, then the
+// click-to-move destination, then idle roaming. Called every frame with
 // an explicit dt so it is deterministic under test.
 function updateDogMotion(now, dtMs) {
 if (S.phase !== 'dream') { dogSpeedPxS = 0; return; }
-if (selectedPoint) {
-dogPauseUntil = 0;
-const target = selectedPoint.x;
-const step = 320 * dtMs / 1000;
-if (Math.abs(target - dogX) <= step) {
-// Arrived: sniff around the point instead of freezing. Before this,
-// an arrived dog stood dead still for the rest of the dream, so the
-// wander state was nearly unobservable in normal play (a point is
-// selected almost immediately). Micro-wander stays within +/-14px
-// of the point at a slow 20px/s, so holes still land at the point.
-if (dogMicroX === null) dogMicroX = target;
-const mStep = 20 * dtMs / 1000;
-if (Math.abs(dogMicroX - dogX) <= mStep) {
-dogX = dogMicroX;
-dogMicroX = target - 14 + Math.random() * 28;
-dogSpeedPxS = 0;
+const dt = dtMs / 1000;
+// Manual keys (WASD/arrows) take over and switch auto off.
+let kx = 0, ky = 0;
+if (keysDown.has('left')) kx -= 1;
+if (keysDown.has('right')) kx += 1;
+if (keysDown.has('up')) ky -= 1;
+if (keysDown.has('down')) ky += 1;
+if (kx || ky) {
+if (autoOn) setAuto(false, true);
+dogTarget = null;
+dogWander = null;
+const len = Math.hypot(kx, ky);
+dogX = clamp(dogX + kx / len * WALK_SPEED * dt, DOG_X_MIN, DOG_X_MAX);
+dogY = clamp(dogY + ky / len * WALK_SPEED * dt, DOG_Y_MIN, DOG_Y_MAX);
+dogSpeedPxS = WALK_SPEED;
 return;
 }
+// Auto mode: walk to the nearest ordinary pit and dig it; strange pits
+// are never auto-targeted (D1 red line: special points stay player-picked).
+if (autoOn) {
+const pit = nearestPit((q) => q.type !== 'strange');
+if (!pit) { wander(now, dt); return; }
+if (moveToward(pit.x, pit.y, dt)) {
+// Arrived: sniff around the pit, dig when the cooldown allows.
+if (dogMicroX === null) dogMicroX = pit.x;
+const mStep = 20 * dt;
+if (Math.abs(dogMicroX - dogX) <= mStep) {
+dogX = dogMicroX;
+dogMicroX = pit.x - 14 + Math.random() * 28;
+dogSpeedPxS = 0;
+} else {
 dogX += Math.sign(dogMicroX - dogX) * mStep;
 dogSpeedPxS = 20;
+}
+if (Date.now() - lastDigAt >= pit.cooldownMs) doDig(pit);
 return;
 }
 dogMicroX = null;
-dogX += Math.sign(target - dogX) * step;
-dogSpeedPxS = 320;
 return;
 }
-if (dogTargetX === null) {
-if (now < dogPauseUntil) { dogSpeedPxS = 0; return; }
-dogTargetX = 90 + Math.random() * 300; // wander within [90, 390]
-dogSpeedPxS = 0;
+// Click-to-move destination.
+if (dogTarget) {
+if (moveToward(dogTarget.x, dogTarget.y, dt)) dogTarget = null;
 return;
 }
-const step = 55 * dtMs / 1000;
-if (Math.abs(dogTargetX - dogX) <= step) {
-dogX = dogTargetX;
-dogTargetX = null;
-dogPauseUntil = now + 1000 + Math.random() * 2000;
-dogSpeedPxS = 0;
-return;
-}
-dogX += Math.sign(dogTargetX - dogX) * step;
-dogSpeedPxS = 55;
+wander(now, dt);
 }
 
 function drawScene() {
@@ -311,23 +372,25 @@ ctx.fillRect(0, 0, canvas.width, canvas.height);
 ctx.fillStyle = pal.ground;
 ctx.fillRect(0, 200, canvas.width, 100);
 
-// Scent-point markers on the ground (visible targets the dog runs to).
-// Colors: strong amber, light green, strange purple; selected gets a ring.
+// Pit markers on the ground (visible targets the dog walks up to).
+// Colors: strong amber, light green, strange purple; the pit in dig
+// range gets a ring so the player knows "刨！" will hit it.
 if (scentsRevealed) {
 const colors = { strong: '#c96a2b', light: '#7fb069', strange: '#9b5de5' };
+const active = nearestPitInRange();
 scentPoints.forEach((p) => {
 const col = colors[p.type] || '#888888';
 ctx.fillStyle = col;
 for (let i = 0; i < 3; i++) {
 const wx = p.x - 8 + i * 8;
-const wy = 232 + Math.sin(now / 300 + i) * 2;
+const wy = p.y - 18 + Math.sin(now / 300 + i) * 2;
 ctx.fillRect(wx, wy, 3, 10);
 }
-if (selectedPoint === p) {
+if (active === p) {
 ctx.strokeStyle = '#ffd23b';
 ctx.lineWidth = 3;
 ctx.beginPath();
-ctx.ellipse(p.x, 248, 30, 10, 0, 0, Math.PI * 2);
+ctx.ellipse(p.x, p.y, 30, 10, 0, 0, Math.PI * 2);
 ctx.stroke();
 }
 });
@@ -337,11 +400,11 @@ ctx.stroke();
 holes.forEach((h) => {
 ctx.fillStyle = pal.pit;
 ctx.beginPath();
-ctx.ellipse(h.x, 250, 26, 8, 0, 0, Math.PI * 2);
+ctx.ellipse(h.x, h.y, 26, 8, 0, 0, Math.PI * 2);
 ctx.fill();
 ctx.fillStyle = pal.dirt;
 ctx.beginPath();
-ctx.ellipse(h.x, 250, 18, 5, 0, 0, Math.PI * 2);
+ctx.ellipse(h.x, h.y, 18, 5, 0, 0, Math.PI * 2);
 ctx.fill();
 });
 
@@ -368,7 +431,7 @@ wagBoost: now < petWagUntil,
 speed: dogSpeedPxS,
 })) {
 const bob = now < digAnimUntil? Math.sin(now / 60) * 4: 0;
-drawDogSprite(ctx, S.breed, S.stage, 6, box.left + 39, 196 + bob, {
+drawDogSprite(ctx, S.breed, S.stage, 6, box.left + 39, box.top + 96 + bob, {
 glitch: S.glitchUnlocked,
 glow: S.stage >= 3,
 });
@@ -421,15 +484,33 @@ ctx.fillRect(x, y, 3, 3);
 }
 
 // Clicking the dog counts as a tap (H02 counter). The Pet button does the same.
-// The click box follows the roaming dog; the reaction (bounce + fast wag
-// + hearts) is added ON TOP of the counter, never instead of it.
+// Clicking anywhere else is a move order: the dog walks there (and manual
+// orders switch auto off). The click box follows the roaming dog.
 canvas.addEventListener('click', (e) => {
 if (S.phase!== 'dream') return;
 const r = canvas.getBoundingClientRect();
 const x = (e.clientX - r.left) * (canvas.width / r.width);
 const y = (e.clientY - r.top) * (canvas.height / r.height);
 const box = dogBox();
-if (x >= box.left && x <= box.left + box.size && y >= box.top && y <= box.top + box.size) petDog();
+if (x >= box.left && x <= box.left + box.size && y >= box.top && y <= box.top + box.size) { petDog(); return; }
+if (autoOn) setAuto(false, true);
+dogTarget = { x: clamp(x, DOG_X_MIN, DOG_X_MAX), y: clamp(y, DOG_Y_MIN, DOG_Y_MAX) };
+dogWander = null;
+});
+
+// WASD / arrows steer the dog directly (desktop); ignored outside dreams
+// so typing in the setup name field is never hijacked.
+const KEY_DIRS = { w: 'up', a: 'left', s: 'down', d: 'right',
+arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right' };
+document.addEventListener('keydown', (e) => {
+const dir = KEY_DIRS[e.key.toLowerCase()];
+if (!dir || S.phase !== 'dream') return;
+e.preventDefault();
+keysDown.add(dir);
+});
+document.addEventListener('keyup', (e) => {
+const dir = KEY_DIRS[e.key.toLowerCase()];
+if (dir) keysDown.delete(dir);
 });
 
 function petDog() {
@@ -437,7 +518,7 @@ const now = Date.now();
 petReactUntil = now + 2000; // happy bounce, held so the squash reads across views
 petWagUntil = now + 2000; // faster tail wag for a moment
 for (let i = 0; i < 3; i++) {
-particles.push({ kind: 'heart', x: dogX - 20 + i * 20, y: 130,
+particles.push({ kind: 'heart', x: dogX - 20 + i * 20, y: dogY - 120,
 vx: 0, vy: -35, born: now, life: 900 });
 }
 S.taps += 1;
@@ -459,12 +540,12 @@ for (let i = types.length - 1; i > 0; i--) {
 const j = Math.floor(Math.random() * (i + 1));
 [types[i], types[j]] = [types[j], types[i]];
 }
-// Each scent point gets a canvas x-position (spread across the ground)
-// so the dog has somewhere visible to run to when it is selected.
+// Each pit gets a ground position (spread across the ground band)
+// so the dog has somewhere visible to walk to.
 const SCENT_SPOTS = [100, 240, 380];
 scentPoints = types.map((t, i) => ({ type: t,...SCENT_TYPES[t],
-x: SCENT_SPOTS[i] + Math.floor(Math.random() * 20) - 10 }));
-selectedPoint = null;
+x: SCENT_SPOTS[i] + Math.floor(Math.random() * 20) - 10,
+y: 220 + Math.floor(Math.random() * 51) }));
 }
 
 let lastSniffAt = 0; // drives the sniff pulse in js/art.js (not a rule)
@@ -475,16 +556,19 @@ hideEvolutionBanner();
 scentsRevealed = true;
 rollScentPoints();
 gainXp(XP_PER_SNIFF);
-log('闻到了 ' + scentPoints.length + ' 个味点：选一个，去刨。');
+log('闻到了 ' + scentPoints.length + ' 个坑：走过去，靠近按“刨！”开挖。');
 save();
 renderDreamControls();
 }
 
-function selectPoint(i) {
-selectedPoint = scentPoints[i];
-dogTargetX = selectedPoint.x; // the dog RUNS to this spot, then digs there
-log('选中：' + selectedPoint.label + '（' + selectedPoint.hint + '）。按“刨！”开挖。');
-renderDreamControls();
+function goToPit(i) {
+// Pit-list shortcut: a manual move order to that pit (switches auto off).
+const pit = scentPoints[i];
+if (!pit) return;
+if (autoOn) setAuto(false, true);
+dogTarget = { x: pit.x, y: pit.y };
+dogWander = null;
+log('走过去：' + pit.label + '（' + pit.hint + '）。靠近后按“刨！”开挖。');
 }
 
 function digYield(point) {
@@ -500,24 +584,27 @@ if (S.meteorNight && (Date.now() - S.dreamStart) < 10 * 60 * 1000) bones *= 2;
 return bones;
 }
 
-function doDig() {
+function doDig(pitArg) {
+// Digs the given pit (auto mode) or the nearest pit in range (manual).
+// Digging at a pit you are not standing next to is not possible.
 hideEvolutionBanner();
-if (!selectedPoint) { log('先闻一闻，再选一个味点。'); return;}
+const pit = pitArg || nearestPitInRange();
+if (!pit) { log('走近一个坑再刨（先闻一闻找出坑）。'); return;}
 const now = Date.now();
-if (now - lastDigAt < selectedPoint.cooldownMs) return;
+if (now - lastDigAt < pit.cooldownMs) return;
 lastDigAt = now;
 digAnimUntil = now + 1200; // pose window only; dig cooldown stays on lastDigAt
-const got = digYield(selectedPoint);
+const got = digYield(pit);
 // Visible dig feedback (numbers unchanged): a pit at the dog's spot,
 // flying dirt, and a bone sprite that pops out and flies to the counter.
 if (holes.length >= 24) holes.shift();
-holes.push({ x: dogX });
+holes.push({ x: dogX, y: dogY });
 for (let i = 0; i < 22; i++) {
-particles.push({ kind: 'dirt', x: dogX, y: 245,
+particles.push({ kind: 'dirt', x: dogX, y: dogY - 5,
 vx: -120 + Math.random() * 240, vy: -190 + Math.random() * 110,
 born: now, life: 1100 });
 }
-flyingBones.push({ x0: dogX, y0: 235, x1: 435, y1: 18,
+flyingBones.push({ x0: dogX, y0: dogY - 15, x1: 435, y1: 18,
 born: now, dur: 1200, tier: boneTierFor(got, lastDigRare) });
 S.bones += got;
 S.totalBonesThisDream += got;
@@ -529,6 +616,28 @@ log('第一层挖空了！第二层在原型里显示为锁定（后续版本开
 }
 save();
 renderHUD();
+}
+
+// Auto mode (D21): one-time unlock after the first wake, then a toggle.
+// The toggle resets every dream; the unlock persists in the save.
+function setAuto(on, manual) {
+if (on && !S.autoUnlocked) return;
+autoOn = on;
+if (!on) dogMicroX = null;
+if (manual) log('手动接管，自动已关。');
+renderDreamControls();
+}
+function buyAuto() {
+if (S.autoUnlocked) { setAuto(!autoOn, false); return; }
+if (S.wakes < 1) { log('自动：第一次醒来后解锁。'); return; }
+if (S.bones < AUTO_COST) { log('骨头不够：自动需要 ' + AUTO_COST + ' 根（一次买断）。'); return; }
+S.bones -= AUTO_COST;
+S.autoUnlocked = true;
+autoOn = true;
+log('自动已买断：狗会自己走、自己找普通坑刨；特殊味点仍要你亲选。点“自动”可随时关。');
+save();
+renderHUD();
+renderDreamControls();
 }
 
 function doSpend() {
@@ -602,11 +711,14 @@ renderAll();
 
 function doUpgrade(lineKey) {
 const line = UPGRADE_LINES.find((l) => l.key === lineKey);
-if (S.upgrades[lineKey] >= 2) return;
-if (S.settlement < UPGRADE_COST) { log('结算资源不够：升级需要 ' + UPGRADE_COST + '。'); return;}
-S.settlement -= UPGRADE_COST;
-S.upgrades[lineKey] = 2;
-wakeNote(line.label + '升级：' + line.from + ' → ' + line.to + '（家当升级，不占醒来名额）。');
+const lv = S.upgrades[lineKey];
+if (lv >= UPGRADE_MAX_LEVEL) return;
+const cost = upgradeCost(lineKey);
+if (S.settlement < cost) { log('结算资源不够：升级需要 ' + cost + '。'); return;}
+S.settlement -= cost;
+S.upgrades[lineKey] = lv + 1;
+const names = UPGRADE_LEVEL_NAMES[lineKey];
+wakeNote(line.label + '升级：' + names[lv - 1] + ' → ' + names[lv] + '（家当升级，不占醒来名额）。');
 save();
 renderWake();
 }
@@ -653,7 +765,7 @@ S.streaks.cardboard = 0;
 unlockCodex('cardboard-god', false);
 log('有狗别墅不住、连选 5 次纸箱：纸箱之神出现了！');
 } else {
-log('纸箱之神进度：连选纸箱 ' + S.streaks.cardboard + ' 次（需先拥有狗别墅，MVP 暂未开放）。');
+log('纸箱之神进度：连选纸箱 ' + S.streaks.cardboard + ' 次（需先拥有狗别墅，狗窝 4 级）。');
 }
 } else { S.streaks.cardboard = 0;}
 
@@ -679,7 +791,8 @@ scentsRevealed = false;
 // Fresh dream, fresh ground: pits, particles and flying bones reset,
 // and the dog starts back at the center of the scene.
 holes = []; particles = []; flyingBones = [];
-dogX = 210; dogTargetX = null; dogPauseUntil = 0; dogMicroX = null;
+dogX = 210; dogY = 250; dogTarget = null; dogWander = null;
+dogPauseUntil = 0; dogMicroX = null; autoOn = false;
 petReactUntil = 0; petWagUntil = 0;
 hideEvolutionBanner();
 rollScentPoints();
@@ -720,15 +833,16 @@ shelter: '收容所看看：去看了一圈（无跨局效果）。',
 'yard-corner': '院子角落转转：院子角落进度 +1，转满 3 次 → 那块地长出梦花。',
 },
 sleep: {
-cardboard: '纸箱：纸箱连选进度 +1（纸箱之神需先拥有狗别墅，MVP 仅记进度）。',
+cardboard: '纸箱：纸箱连选进度 +1（纸箱之神需先拥有狗别墅，狗窝 4 级）。',
 mat: '垫子：在垫子上睡（无跨局效果）。',
 },
 };
 
 function renderHUD() {
 const dogName = S.name || (S.breed && BREEDS[S.breed] ? BREEDS[S.breed].name : '');
-$('hud').textContent =
-(dogName ? dogName + ' · ' : '') +
+// Pits stay hidden until the first sniff of a dream; sniffing
+// reveals them (and re-rolls on later sniffs). Buttons are walk-to
+// shortcuts; digging still needs the dog standing next to the pit.
 String(S.stage).padStart(3, '0') + ' ' + stageName() + ' ' +
 ' 骨头 ' + S.bones +
 ' | 刨力 +' + S.digPower +
@@ -747,8 +861,21 @@ bar.style.width = S.stage >= 3
 }
 const digBtn = $('btn-dig');
 if (digBtn) {
-const cd = selectedPoint? selectedPoint.cooldownMs: 0;
-digBtn.disabled =!selectedPoint || (Date.now() - lastDigAt < cd);
+const pit = nearestPitInRange();
+const cd = pit ? pit.cooldownMs : 0;
+digBtn.disabled = !pit || (Date.now() - lastDigAt < cd);
+}
+const autoBtn = $('btn-auto');
+if (autoBtn) {
+if (!S.autoUnlocked) {
+autoBtn.textContent = S.wakes >= 1
+? '自动：' + AUTO_COST + ' 骨头一次买断（狗自己走自己找）'
+: '自动：第一次醒来后解锁';
+autoBtn.disabled = S.wakes < 1 || S.bones < AUTO_COST;
+} else {
+autoBtn.textContent = autoOn ? '自动：开（点一下关）' : '自动：关（点一下开）';
+autoBtn.disabled = false;
+}
 }
 const buriedPending = S.buried.reduce((a, b) => a + b.amount, 0);
 $('bury-status').textContent = buriedPending
@@ -762,20 +889,14 @@ box.innerHTML = '';
 // Scent points stay hidden until the first sniff of this dream; sniffing
 // reveals them (and re-rolls on later sniffs).
 if (!scentsRevealed) {
-box.textContent = '按“闻一闻”找出味点。';
+box.textContent = '按“闻一闻”找出坑。';
 } else {
 scentPoints.forEach((p, i) => {
 const b = document.createElement('button');
 const bonus = affinityBonus(S.breed, p.type);
 b.textContent = p.label + '（' + p.hint + '）' +
-(bonus? '（' + BREEDS[S.breed].line + '擅长 +' + bonus + '）' : '');
-// Selected point: bright highlight + checkmark + "已选中".
-// It must never look disabled, so it stays clickable and full-opacity.
-if (selectedPoint === p) {
-b.className = 'selected';
-b.textContent += ' ✓ 已选中';
-}
-b.onclick = () => selectPoint(i);
+(bonus? '（' + BREEDS[S.breed].line + '擅长 +' + bonus + '）' : '') + ' → 走过去';
+b.onclick = () => goToPit(i);
 box.appendChild(b);
 });
 }
@@ -802,10 +923,11 @@ up.innerHTML = '';
 UPGRADE_LINES.forEach((line) => {
 const b = document.createElement('button');
 const lv = S.upgrades[line.key];
-b.textContent = lv >= 2
-? line.label + '：' + line.to + '（MVP 已满级）'
-: line.label + '：' + line.from + ' → ' + line.to + '（' + UPGRADE_COST + ' 结算资源）';
-b.disabled = lv >= 2 || S.settlement < UPGRADE_COST;
+const names = UPGRADE_LEVEL_NAMES[line.key];
+b.textContent = lv >= UPGRADE_MAX_LEVEL
+? line.label + '：' + names[lv - 1] + '（已满级）'
+: line.label + '：' + names[lv - 1] + ' → ' + names[lv] + '（' + upgradeCost(line.key) + ' 结算资源）';
+b.disabled = lv >= UPGRADE_MAX_LEVEL || S.settlement < upgradeCost(line.key);
 b.onclick = () => doUpgrade(line.key);
 up.appendChild(b);
 });
@@ -820,7 +942,7 @@ const sleepOpts = [['cardboard', '纸箱']];
 if (S.upgrades.kennel >= 2) sleepOpts.push(['mat', '垫子']);
 renderPickGroup('sleep-box', sleepOpts, 'sleep');
 $('sleep-note').textContent =
-'小床 / 狗别墅：MVP 狗窝最高只到垫子，暂未开放。纸箱之神需狗别墅，MVP 仅记进度。';
+'小床 / 狗别墅：狗窝升到 4 级就是别墅；纸箱之神需拥有别墅后连选 5 次纸箱。';
 }
 
 function renderPickGroup(boxId, opts, kind) {
@@ -896,6 +1018,7 @@ $('btn-spend').onclick = doSpend;
 $('btn-bury').onclick = doBury;
 $('btn-wake').onclick = doWake;
 $('btn-pet').onclick = petDog;
+$('btn-auto').onclick = buyAuto;
 $('btn-dismiss-banner').onclick = hideEvolutionBanner;
 $('btn-meadow').onclick = () => { S.scene = 'meadow'; save(); renderAll();};
 $('btn-snowfield').onclick = () => { S.scene = 'snowfield'; save(); renderAll();};
