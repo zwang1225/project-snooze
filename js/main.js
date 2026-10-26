@@ -51,9 +51,9 @@ yard: ['没院子', '小院', '菜园', '花园', '大庄园'],
 function upgradeCost(lineKey) { return UPGRADE_BASE_COST * S.upgrades[lineKey]; }
 const AUTO_COST = 100; // bones, one-time unlock after the first wake (placeholder)
 const DIG_RANGE = 40; // px: dog must be this close to a pit to dig it
-const WALK_SPEED = 160; // px/s: player-directed and auto walking
-const DOG_X_MIN = 75, DOG_X_MAX = 405; // dog box half-width 75
-const DOG_Y_MIN = 215, DOG_Y_MAX = 275; // feet y on the ground band
+const WALK_SPEED = 260; // px/s: player-directed and auto walking (retuned for the 960-wide map)
+const DOG_X_MIN = 75, DOG_X_MAX = 885; // dog box half-width 75 on the 960-wide map
+const DOG_Y_MIN = 430, DOG_Y_MAX = 550; // feet y on the ground band (ground is y 400-600)
 const CODEX_NEW_BONUS = 50; // D10 placeholder
 const SHORT_DREAM_S = 180; // dreams under 3 minutes settle at 20%
 const GLITCH_TAPS = 999; // taps before the small chance starts
@@ -102,6 +102,7 @@ codex: { hero: true, 'riddle-h02': true},
 streaks: { salmon: 0, cardboard: 0, park: 0, yardCorner: 0},
 scenesUnlocked: ['meadow'],
 autoUnlocked: false,
+pinned: null,
 shadowTeaserSeen: false,
 };
 }
@@ -123,12 +124,12 @@ let lastBuryLog = '';
 let scentsRevealed = false;
 
 // Interaction pass (visual feedback only — no rules live here).
-// Dog position is visible state on the 480x300 canvas: the dog box is
+// Dog position is visible state on the 960x600 canvas: the dog box is
 // 150x150, dogX is the box CENTER x, dogY is the FEET y on the ground
 // band (215-275). D21: the dog walks the ground freely (click-to-move
 // + WASD); scent points are world pits it walks up to.
 const DOG_BOX = 150;
-let dogX = 210, dogY = 250, dogPauseUntil = 0, dogMicroX = null;
+let dogX = 480, dogY = 490, dogPauseUntil = 0, dogMicroX = null;
 let dogSpeedPxS = 0; // D19: current movement speed (0 idle, 55 wander, 320 run)
 let holes = []; // {x} — dig pits dug this dream, drawn on the ground
 let particles = []; // {kind:'dirt'|'heart', x, y, vx, vy, born, life}
@@ -300,7 +301,7 @@ return p && Math.hypot(p.x - dogX, p.y - dogY) <= DIG_RANGE ? p : null;
 function wander(now, dt) {
 if (now < dogPauseUntil) { dogSpeedPxS = 0; return; }
 if (!dogWander) {
-dogWander = { x: 90 + Math.random() * 300,
+dogWander = { x: 150 + Math.random() * 660,
 y: DOG_Y_MIN + Math.random() * (DOG_Y_MAX - DOG_Y_MIN) };
 dogSpeedPxS = 0;
 return;
@@ -370,7 +371,7 @@ const now = Date.now();
 ctx.fillStyle = pal.sky;
 ctx.fillRect(0, 0, canvas.width, canvas.height);
 ctx.fillStyle = pal.ground;
-ctx.fillRect(0, 200, canvas.width, 100);
+ctx.fillRect(0, 400, canvas.width, canvas.height - 400);
 
 // Pit markers on the ground (visible targets the dog walks up to).
 // Colors: strong amber, light green, strange purple; the pit in dig
@@ -414,7 +415,7 @@ ctx.fill();
 if (S.bones > 0) {
 const n = Math.min(8, 1 + Math.floor(S.bones / 5));
 for (let i = 0; i < n; i++) {
-drawBonePixel(ctx, 415 + (i % 3) * 16, 272 + Math.floor(i / 3) * 10, 2, 'plain');
+drawBonePixel(ctx, 845 + (i % 3) * 16, 565 + Math.floor(i / 3) * 10, 2, 'plain');
 }
 }
 
@@ -468,7 +469,7 @@ if (S.shadowTeaserSeen && S.scene === 'meadow') {
 ctx.fillStyle = 'rgba(90, 70, 48, 0.55)';
 for (let i = 0; i < 4; i++) {
 ctx.beginPath();
-ctx.ellipse(60 + i * 26, 262 + (i % 2) * 8, 7, 4, 0, 0, Math.PI * 2);
+ctx.ellipse(120 + i * 26, 540 + (i % 2) * 8, 7, 4, 0, 0, Math.PI * 2);
 ctx.fill();
 }
 }
@@ -476,7 +477,7 @@ ctx.fill();
 if (S.meteorNight) {
 ctx.fillStyle = '#ffe97a';
 for (let i = 0; i < 8; i++) {
-const x = 20 + ((i * 53) % 440);
+const x = 20 + ((i * 53) % 900);
 const y = 12 + ((i * 29) % 60);
 ctx.fillRect(x, y, 3, 3);
 }
@@ -542,10 +543,10 @@ const j = Math.floor(Math.random() * (i + 1));
 }
 // Each pit gets a ground position (spread across the ground band)
 // so the dog has somewhere visible to walk to.
-const SCENT_SPOTS = [100, 240, 380];
+const SCENT_SPOTS = [180, 480, 780];
 scentPoints = types.map((t, i) => ({ type: t,...SCENT_TYPES[t],
 x: SCENT_SPOTS[i] + Math.floor(Math.random() * 20) - 10,
-y: 220 + Math.floor(Math.random() * 51) }));
+y: 440 + Math.floor(Math.random() * 101) }));
 }
 
 let lastSniffAt = 0; // drives the sniff pulse in js/art.js (not a rule)
@@ -558,7 +559,7 @@ rollScentPoints();
 gainXp(XP_PER_SNIFF);
 log('闻到了 ' + scentPoints.length + ' 个坑：走过去，靠近按“刨！”开挖。');
 save();
-renderDreamControls();
+renderHUD();
 }
 
 function goToPit(i) {
@@ -604,7 +605,7 @@ particles.push({ kind: 'dirt', x: dogX, y: dogY - 5,
 vx: -120 + Math.random() * 240, vy: -190 + Math.random() * 110,
 born: now, life: 1100 });
 }
-flyingBones.push({ x0: dogX, y0: dogY - 15, x1: 435, y1: 18,
+flyingBones.push({ x0: dogX, y0: dogY - 15, x1: 915, y1: 18,
 born: now, dur: 1200, tier: boneTierFor(got, lastDigRare) });
 S.bones += got;
 S.totalBonesThisDream += got;
@@ -625,7 +626,7 @@ if (on && !S.autoUnlocked) return;
 autoOn = on;
 if (!on) dogMicroX = null;
 if (manual) log('手动接管，自动已关。');
-renderDreamControls();
+renderHUD();
 }
 function buyAuto() {
 if (S.autoUnlocked) { setAuto(!autoOn, false); return; }
@@ -637,7 +638,7 @@ autoOn = true;
 log('自动已买断：狗会自己走、自己找普通坑刨；特殊味点仍要你亲选。点“自动”可随时关。');
 save();
 renderHUD();
-renderDreamControls();
+renderHUD();
 }
 
 function doSpend() {
@@ -791,7 +792,7 @@ scentsRevealed = false;
 // Fresh dream, fresh ground: pits, particles and flying bones reset,
 // and the dog starts back at the center of the scene.
 holes = []; particles = []; flyingBones = [];
-dogX = 210; dogY = 250; dogTarget = null; dogWander = null;
+dogX = 480; dogY = 490; dogTarget = null; dogWander = null;
 dogPauseUntil = 0; dogMicroX = null; autoOn = false;
 petReactUntil = 0; petWagUntil = 0;
 hideEvolutionBanner();
@@ -838,6 +839,20 @@ mat: '垫子：在垫子上睡（无跨局效果）。',
 },
 };
 
+// Single next-objective line (D20, carried into D22): computed from
+// existing progress only, no new goal system. A pinned line sticks
+// until unpinned (it snapshots the text; it does not auto-update).
+function autoObjective() {
+if (S.phase === 'wake') {
+const n = (wakePick.eat ? 1 : 0) + (wakePick.play ? 1 : 0) + (wakePick.sleep ? 1 : 0);
+return n >= 3 ? '三格已选满，睡过去开下一场梦' : '醒来三格还差 ' + (3 - n) + ' 格';
+}
+if (S.stage < 3) return '攒经历进化（' + S.xp + '/' + xpNeed() + '）';
+if (!S.layerCleared) return '挖空第一层（' + Math.min(S.layerBones, LAYER_1_CLEAR_AT) + '/' + LAYER_1_CLEAR_AT + '）';
+if (!S.autoUnlocked && S.wakes >= 1) return '攒 ' + AUTO_COST + ' 根骨头买断自动';
+return '推不动就按“醒来”结算';
+}
+
 function renderHUD() {
 const dogName = S.name || (S.breed && BREEDS[S.breed] ? BREEDS[S.breed].name : '');
 // Pits stay hidden until the first sniff of a dream; sniffing
@@ -862,9 +877,21 @@ bar.style.width = S.stage >= 3
 const digBtn = $('btn-dig');
 if (digBtn) {
 const pit = nearestPitInRange();
-const cd = pit ? pit.cooldownMs : 0;
-digBtn.disabled = !pit || (Date.now() - lastDigAt < cd);
+const remain = pit ? Math.max(0, pit.cooldownMs - (Date.now() - lastDigAt)) : 0;
+digBtn.disabled = !pit || remain > 0;
+digBtn.textContent = pit && remain > 0 ? '刨！（冷却 ' + (remain / 1000).toFixed(1) + ' 秒）' : '刨！';
 }
+const dogStatus = $('dog-status');
+if (dogStatus) {
+if (autoOn) dogStatus.textContent = '状态：自动开，狗自己走、自己找普通坑刨。';
+else if (nearestPitInRange()) dogStatus.textContent = '状态：狗在坑边嗅探，按“刨！”开挖。';
+else if (dogTarget) dogStatus.textContent = '状态：狗正在走过去。';
+else dogStatus.textContent = '状态：狗在闲逛。';
+}
+const objEl = $('next-objective');
+if (objEl) objEl.textContent = S.pinned ? '已钉目标：' + S.pinned : '下一步：' + autoObjective();
+const pinBtn = $('btn-pin');
+if (pinBtn) pinBtn.textContent = S.pinned ? '取消钉' : '钉住目标';
 const autoBtn = $('btn-auto');
 if (autoBtn) {
 if (!S.autoUnlocked) {
@@ -878,36 +905,15 @@ autoBtn.disabled = false;
 }
 }
 const buriedPending = S.buried.reduce((a, b) => a + b.amount, 0);
-$('bury-status').textContent = buriedPending
-? '埋着 ' + buriedPending + ' 根骨头（60 秒后挖出变多）'
-: '没埋骨头';
-}
-
-function renderDreamControls() {
-const box = $('scent-box');
-box.innerHTML = '';
-// Scent points stay hidden until the first sniff of this dream; sniffing
-// reveals them (and re-rolls on later sniffs).
-if (!scentsRevealed) {
-box.textContent = '按“闻一闻”找出坑。';
+if (buriedPending) {
+const soonest = Math.min(...S.buried.map((b) => b.readyAt));
+const sec = Math.max(0, Math.ceil((soonest - Date.now()) / 1000));
+$('bury-status').textContent = sec > 0
+? '埋着 ' + buriedPending + ' 根骨头（' + sec + ' 秒后挖出变多）'
+: '埋着 ' + buriedPending + ' 根骨头（快挖出来了）';
 } else {
-scentPoints.forEach((p, i) => {
-const b = document.createElement('button');
-const bonus = affinityBonus(S.breed, p.type);
-b.textContent = p.label + '（' + p.hint + '）' +
-(bonus? '（' + BREEDS[S.breed].line + '擅长 +' + bonus + '）' : '') + ' → 走过去';
-b.onclick = () => goToPit(i);
-box.appendChild(b);
-});
+$('bury-status').textContent = '没埋骨头';
 }
-$('scene-note').textContent =
-S.scene === 'snowfield'
-? '雪原场景：冰线朋友与冻土隐藏出现率更高（原型仅展示倾向说明）。'
-: '草地场景：梦境草地是公共的，所有睡着的狗都来。';
-const snowBtn = $('btn-snowfield');
-snowBtn.disabled =!S.scenesUnlocked.includes('snowfield');
-snowBtn.textContent = S.scenesUnlocked.includes('snowfield')
-? '去雪原': '雪原（第一次醒来后解锁）';
 }
 
 function renderWake() {
@@ -918,6 +924,10 @@ $('wake-breakdown').textContent =
 (r.short? ' → 短梦（< 3 分钟）只结算 20%': ' → 全额结算') +
 (r.bonus? ' + 首醒教学奖励 ' + FIRST_WAKE_BONUS: '') +
 ' = 本次结算 ' + r.grand + '（当前持有 ' + S.settlement + '）';
+const picked = (wakePick.eat ? 1 : 0) + (wakePick.play ? 1 : 0) + (wakePick.sleep ? 1 : 0);
+$('wake-progress').textContent = '醒来三格：已选 ' + picked + '/3' +
+(picked < 3 ? '（吃、玩、睡各选 1 格才能睡过去）' : '（已选满）');
+$('btn-sleep').disabled = picked < 3;
 const up = $('upgrade-box');
 up.innerHTML = '';
 UPGRADE_LINES.forEach((line) => {
@@ -977,14 +987,16 @@ box.appendChild(div);
 }
 
 function renderAll() {
+// The frame is always sized (aspect-ratio); the setup overlay covers it
+// in the setup phase, and the wake overlay covers it in the wake phase.
 $('setup').style.display = S.phase === 'setup'? 'block': 'none';
-$('game').style.display = S.phase === 'setup'? 'none': 'block';
+$('game').style.display = 'block';
 $('dream-panel').style.display = S.phase === 'dream'? 'block': 'none';
 $('wake-panel').style.display = S.phase === 'wake'? 'block': 'none';
 $('phase-label').textContent =
 S.phase === 'dream'? '梦里（' + (S.scene === 'snowfield'? '雪原': '草地') + '）':
 S.phase === 'wake'? '醒着（现实小屋）': '选狗';
-if (S.phase === 'dream') { renderHUD(); renderDreamControls(); drawScene();}
+if (S.phase === 'dream') { renderHUD(); drawScene();}
 if (S.phase === 'wake') { renderWake();}
 renderCodex();
 }
@@ -1019,19 +1031,29 @@ $('btn-bury').onclick = doBury;
 $('btn-wake').onclick = doWake;
 $('btn-pet').onclick = petDog;
 $('btn-auto').onclick = buyAuto;
+$('btn-pin').onclick = () => {
+if (S.pinned) S.pinned = null;
+else S.pinned = autoObjective();
+save();
+renderHUD();
+};
+function togglePanel(id) {
+const p = $(id);
+p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+$('btn-codex').onclick = () => { togglePanel('codex-panel'); renderCodex(); };
+$('btn-howto').onclick = () => { togglePanel('howto-panel'); };
+$('btn-log').onclick = () => { togglePanel('log-panel'); };
+$('btn-close-codex').onclick = () => { $('codex-panel').style.display = 'none'; };
+$('btn-close-howto').onclick = () => { $('howto-panel').style.display = 'none'; };
+$('btn-close-log').onclick = () => { $('log-panel').style.display = 'none'; };
+$('btn-reset').onclick = () => { $('confirm-panel').style.display = 'block'; };
+$('btn-confirm-reset').onclick = () => { StorageAdapter.clear(); location.reload(); };
+$('btn-cancel-reset').onclick = () => { $('confirm-panel').style.display = 'none'; };
 $('btn-dismiss-banner').onclick = hideEvolutionBanner;
 $('btn-meadow').onclick = () => { S.scene = 'meadow'; save(); renderAll();};
 $('btn-snowfield').onclick = () => { S.scene = 'snowfield'; save(); renderAll();};
 $('btn-sleep').onclick = applyWakePicks;
-$('btn-codex').onclick = () => {
-const p = $('codex-panel');
-p.style.display = p.style.display === 'none'? 'block': 'none';
-renderCodex();
-};
-$('btn-reset').onclick = () => {
-StorageAdapter.clear();
-location.reload();
-};
 
 // Tick: buried maturity, HUD refresh, canvas redraw.
 setInterval(() => {

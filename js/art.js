@@ -190,7 +190,7 @@ function artKeyedFrame(key) {
 
 /* ---------------- drawing ---------------- */
 
-// Dog box: keyframe drawn at 150x150 on the 480x300 canvas — feet land
+// Dog box: keyframe drawn at 150x150 on the 960x600 canvas — feet land
 // on the ground line, head clears the sky. Position comes from the
 // caller (interaction pass: the dog roams the scene); defaults keep
 // the old centered placement. Tail base anchor: rear-right side of
@@ -201,7 +201,7 @@ function artKeyedFrame(key) {
 // Single-sourced: drawArtDog applies exactly these values, and the
 // test harness asserts on them. Visible sprite content sits well inside
 // the 150px box margins, so even the largest tilt/scale keeps every
-// visible pixel inside the 480x300 canvas (worst corner extent ~80px
+// visible pixel inside the 960x600 canvas (worst corner extent ~80px
 // against a minimum box-center of 90px from the edge).
 // st: { now, digging, rebound, speed, pet } — speed in px/s (0 idle,
 // ~55 wander, 320 run-to-point).
