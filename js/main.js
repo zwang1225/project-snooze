@@ -323,9 +323,10 @@ ctx.fill();
 });
 
 // Bone pile, bottom-right: grows with this dream's bone count
-// (visual only, capped at 8 sprites).
+// (visual only, capped at 8 sprites; +1 per 5 bones so it visibly
+// grows inside a single dream — the old /40 step stayed at 1 bone).
 if (S.bones > 0) {
-const n = Math.min(8, 1 + Math.floor(S.bones / 40));
+const n = Math.min(8, 1 + Math.floor(S.bones / 5));
 for (let i = 0; i < n; i++) {
 drawBonePixel(ctx, 415 + (i % 3) * 16, 272 + Math.floor(i / 3) * 10, 2, 'plain');
 }
@@ -357,7 +358,7 @@ if (pt.kind === 'dirt') {
 const px = pt.x + pt.vx * age;
 const py = pt.y + pt.vy * age + 0.5 * 300 * age * age;
 ctx.fillStyle = 'rgba(138, 106, 72, ' + Math.max(0, 1 - age / (pt.life / 1000)).toFixed(2) + ')';
-ctx.fillRect(px, py, 4, 4);
+ctx.fillRect(px, py, 6, 6);
 } else {
 const py = pt.y + pt.vy * age;
 ctx.globalAlpha = Math.max(0, 1 - age / (pt.life / 1000));
@@ -371,8 +372,8 @@ flyingBones = flyingBones.filter((b) => now - b.born < b.dur);
 flyingBones.forEach((b) => {
 const p = (now - b.born) / b.dur;
 const fx = b.x0 + (b.x1 - b.x0) * p;
-const fy = b.y0 + (b.y1 - b.y0) * p - Math.sin(Math.PI * p) * 30;
-drawBonePixel(ctx, fx, fy, 3, b.tier);
+const fy = b.y0 + (b.y1 - b.y0) * p - Math.sin(Math.PI * p) * 60;
+drawBonePixel(ctx, fx, fy, 4, b.tier);
 });
 
 // Shadow-teaser pawprints (D9 recipe 4, teaser form only).
@@ -487,13 +488,13 @@ const got = digYield(selectedPoint);
 // flying dirt, and a bone sprite that pops out and flies to the counter.
 if (holes.length >= 24) holes.shift();
 holes.push({ x: dogX });
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < 22; i++) {
 particles.push({ kind: 'dirt', x: dogX, y: 245,
-vx: -60 + Math.random() * 120, vy: -140 + Math.random() * 80,
-born: now, life: 700 });
+vx: -120 + Math.random() * 240, vy: -190 + Math.random() * 110,
+born: now, life: 1100 });
 }
 flyingBones.push({ x0: dogX, y0: 235, x1: 435, y1: 18,
-born: now, dur: 650, tier: boneTierFor(got, lastDigRare) });
+born: now, dur: 1200, tier: boneTierFor(got, lastDigRare) });
 S.bones += got;
 S.totalBonesThisDream += got;
 S.layerBones += got;
