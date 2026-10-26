@@ -196,6 +196,51 @@ function artKeyedFrame(key) {
 // the old centered placement. Tail base anchor: rear-right side of
 // the body (dogs face forward, so the tail peeks from behind at the
 // side, never pasted over the face).
+// D19 body animation (code transforms only — no new frames, no new art files).
+// Pure function: given the dog's state, returns the body transform.
+// Single-sourced: drawArtDog applies exactly these values, and the
+// test harness asserts on them. Visible sprite content sits well inside
+// the 150px box margins, so even the largest tilt/scale keeps every
+// visible pixel inside the 480x300 canvas (worst corner extent ~78px
+// against a minimum box-center of 90px from the edge).
+// st: { now, digging, rebound, speed, pet } — speed in px/s (0 idle,
+// ~55 wander, 320 run-to-point).
+function dogBodyTransform(st) {
+  const t = st.now / 1000;
+  let tilt = 0, scaleX = 1, scaleY = 1, bob = 0, wagMul = 1;
+  if (st.digging) {
+    // Dig: pitch forward + crouch, fast shovelling bob; rebound follows
+    // in the 300ms window after the dig window ends (see rebound branch).
+    tilt = 0.20 + Math.sin(st.now / 60) * 0.04;
+    scaleX = 1.06; scaleY = 0.88;
+    bob = Math.sin(st.now / 60) * 4;
+    wagMul = 1.4;
+  } else if (st.rebound) {
+    // Rebound: brief overshoot past neutral, then settles into idle.
+    tilt = -0.04; scaleX = 0.97; scaleY = 1.05; bob = -2;
+  } else if (st.pet) {
+    // Pet: squash bounce (compress on the beat, rebound off it) +
+    // slight head-up tilt. Hearts + tap counter live in main.js, untouched.
+    const beat = Math.abs(Math.sin(st.now / 110));
+    scaleY = 1 - 0.10 * beat; scaleX = 1 + 0.06 * beat;
+    tilt = -0.06; bob = -beat * 8; wagMul = 2.2;
+  } else if (st.speed > 0) {
+    // Walk/run: bob amplitude, forward lean and tail speed all scale
+    // with speed, so a run reads clearly bigger than a wander.
+    const f = Math.min(1, st.speed / 320);
+    tilt = 0.04 + f * 0.10; // ~0.06 wander -> 0.14 run
+    bob = Math.sin(st.now / (st.speed >= 200 ? 70 : 110)) * (2.5 + f * 3.5);
+    scaleY = 1 + Math.sin(st.now / 130) * 0.01;
+    wagMul = 1 + f * 1.2; // ~1.2 wander -> 2.2 run
+  } else {
+    // Idle: slow breathing — gentle vertical scale oscillation + soft bob,
+    // so the dog is never fully static.
+    scaleY = 1 + Math.sin(t * 2.2) * 0.02;
+    bob = Math.sin(t * 2.2) * 2;
+  }
+  return { tilt, scaleX, scaleY, bob, wagMul };
+}
+
 function drawArtDog(ctx, breed, stage, opts) {
   opts = opts || {};
   const key = artKeyFor(breed, stage);
@@ -210,11 +255,17 @@ function drawArtDog(ctx, breed, stage, opts) {
   const digging = now < (typeof digAnimUntil !== 'undefined' ? digAnimUntil : 0);
   const t = now / 1000;
 
-  // Idle bob + dig tilt. While digging the body tilts and bobs faster.
-  // A fresh pet adds a happy bounce on top of the bob.
-  let bob = digging ? Math.sin(now / 60) * 4 : Math.sin(t * 2.2) * 2;
-  if (opts.petBounce) bob -= Math.abs(Math.sin(now / 110)) * 8;
-  const tilt = digging ? Math.sin(now / 120) * 0.07 : 0;
+  // D19 body transform: one pure function decides bob/tilt/scale/wag
+  // from the dog's state (dig window, rebound window, speed, pet).
+  const speed = (typeof opts.speed === 'number' ? opts.speed : 0);
+  const tr = dogBodyTransform({
+    now: now,
+    digging: digging,
+    rebound: !digging && now < digAnimUntil + 300,
+    speed: speed,
+    pet: !!opts.petBounce,
+  });
+  const bob = tr.bob, tilt = tr.tilt;
   const cx = dx + D / 2, cy = dy + D / 2 + bob;
 
   const L = ART_LAYERS[key] || {};
@@ -222,6 +273,7 @@ function drawArtDog(ctx, breed, stage, opts) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(tilt);
+  ctx.scale(tr.scaleX, tr.scaleY);
 
   // Tail layer, behind the keyframe, wagging around its base
   // (bottom-center of the cropped tail content).
@@ -229,8 +281,9 @@ function drawArtDog(ctx, breed, stage, opts) {
   const tail = tailPath ? artKeyedLayer(tailPath) : null;
   if (tail) {
     const wagDeg = L.wag || 12;
-    // A fresh pet makes the tail wag faster for a moment.
-    const wagSpeed = (L.fast ? 9 : 5) * (opts.wagBoost ? 2.2 : 1);
+    // Tail wag scales with movement speed (D19); the pet boost is a
+    // floor, not a multiplier, so run + pet never goes frantic.
+    const wagSpeed = (L.fast ? 9 : 5) * Math.max(tr.wagMul, opts.wagBoost ? 2.2 : 1);
     const ang = Math.sin(t * wagSpeed) * wagDeg * Math.PI / 180;
     const tailW = D * 0.42;
     const tailH = tailW * tail.h / tail.w;
