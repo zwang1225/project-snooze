@@ -7,6 +7,7 @@ button:disabled { cursor: default; opacity: 0.5; }
 /* The game is one frame: canvas fills it, every control overlays inside it. */
 #game-frame { position: relative; width: 960px; max-width: 100%; margin: 0 auto; border: 2px solid #333; aspect-ratio: 8 / 5; background: #cfe8b8; }
 #game { position: absolute; inset: 0; }
+#stage { position: absolute; inset: 0; }
 #scene { width: 100%; height: 100%; display: block; image-rendering: pixelated; background: #cfe8b8; }
 
 /* Start screen: an opaque overlay covering the frame. */
@@ -45,3 +46,23 @@ button:disabled { cursor: default; opacity: 0.5; }
 .codex-entry { border-bottom: 1px solid #ddd; padding: 4px 0; }
 #upgrade-box button { display: block; width: 100%; text-align: left; }
 #eat-box button, #play-box button, #sleep-box button { display: inline-block; }
+
+/* Narrow screens (D24): stop overlaying. A 960x600 frame shrunk to phone
+   width is ~225px tall, far too short for fixed-size DOM overlays — the
+   HUD ate half the frame and the action bar got clipped. So on phones
+   the canvas keeps its aspect on top and the HUD / action bar become
+   static blocks stacked below it; the page scrolls. Desktop layout
+   above is untouched. */
+@media (max-width: 640px) {
+  body { padding: 6px; }
+  #game-frame { width: 100%; aspect-ratio: auto; height: auto; }
+  #game { position: static; }
+  #stage { position: relative; }
+  #scene { height: auto; aspect-ratio: 8 / 5; }
+  #hud-bar { position: static; font-size: 13px; padding: 6px 8px; }
+  #dream-panel { position: static; max-height: none; overflow: visible; font-size: 13px; padding: 6px 8px; }
+  #evolution-banner { top: 8px; font-size: 16px; padding: 6px 10px; white-space: normal; text-align: center; max-width: 92%; }
+  #next-hint { top: 62px; font-size: 12px; }
+  .scene-arrow { font-size: 24px; padding: 8px 10px; }
+  button { padding: 5px 8px; }
+}
