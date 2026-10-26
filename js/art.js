@@ -190,10 +190,12 @@ function artKeyedFrame(key) {
 
 /* ---------------- drawing ---------------- */
 
-// Dog box: keyframe drawn at 150x150, top-left (135, 100) on the
-// 480x300 canvas — feet land on the ground line, head clears the sky.
-// Tail base anchor: rear-right side of the body (dogs face forward, so
-// the tail peeks from behind at the side, never pasted over the face).
+// Dog box: keyframe drawn at 150x150 on the 480x300 canvas — feet land
+// on the ground line, head clears the sky. Position comes from the
+// caller (interaction pass: the dog roams the scene); defaults keep
+// the old centered placement. Tail base anchor: rear-right side of
+// the body (dogs face forward, so the tail peeks from behind at the
+// side, never pasted over the face).
 function drawArtDog(ctx, breed, stage, opts) {
   opts = opts || {};
   const key = artKeyFor(breed, stage);
@@ -202,13 +204,16 @@ function drawArtDog(ctx, breed, stage, opts) {
   if (!kf || !kf.ok) return false; // caller falls back to placeholder
   ctx.imageSmoothingEnabled = false;
 
-  const D = 150, dx = 135, dy = 100;
+  const D = 150, dx = (typeof opts.dx === 'number' ? opts.dx : 135),
+    dy = (typeof opts.dy === 'number' ? opts.dy : 100);
   const now = Date.now();
   const digging = now < (typeof digAnimUntil !== 'undefined' ? digAnimUntil : 0);
   const t = now / 1000;
 
   // Idle bob + dig tilt. While digging the body tilts and bobs faster.
-  const bob = digging ? Math.sin(now / 60) * 4 : Math.sin(t * 2.2) * 2;
+  // A fresh pet adds a happy bounce on top of the bob.
+  let bob = digging ? Math.sin(now / 60) * 4 : Math.sin(t * 2.2) * 2;
+  if (opts.petBounce) bob -= Math.abs(Math.sin(now / 110)) * 8;
   const tilt = digging ? Math.sin(now / 120) * 0.07 : 0;
   const cx = dx + D / 2, cy = dy + D / 2 + bob;
 
@@ -224,7 +229,8 @@ function drawArtDog(ctx, breed, stage, opts) {
   const tail = tailPath ? artKeyedLayer(tailPath) : null;
   if (tail) {
     const wagDeg = L.wag || 12;
-    const wagSpeed = L.fast ? 9 : 5;
+    // A fresh pet makes the tail wag faster for a moment.
+    const wagSpeed = (L.fast ? 9 : 5) * (opts.wagBoost ? 2.2 : 1);
     const ang = Math.sin(t * wagSpeed) * wagDeg * Math.PI / 180;
     const tailW = D * 0.42;
     const tailH = tailW * tail.h / tail.w;

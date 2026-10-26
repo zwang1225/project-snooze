@@ -105,6 +105,20 @@ let lastBuryLog = '';
 // and the evolution banner stays up until dismissed or the next action.
 let scentsRevealed = false;
 
+// Interaction pass (visual feedback only — no rules live here).
+// Dog position is visible state on the 480x300 canvas: the dog box is
+// 150x150 with its top at y=100, so dogX is the box CENTER x and the
+// dog's feet land at y=250. The dog roams when nothing is selected
+// and RUNS to the selected scent point's x when one is picked.
+const DOG_BOX = 150, DOG_TOP = 100;
+let dogX = 210, dogTargetX = null, dogPauseUntil = 0;
+let holes = []; // {x} — dig pits dug this dream, drawn on the ground
+let particles = []; // {kind:'dirt'|'heart', x, y, vx, vy, born, life}
+let flyingBones = []; // {x0, y0, x1, y1, born, dur, tier}
+let petReactUntil = 0, petWagUntil = 0;
+let lastDigRare = false; // set by digYield when the strange rare bonus hits
+let lastFrameAt = 0;
+
 function save() { StorageAdapter.save(S);}
 function $(id) { return document.getElementById(id);}
 function log(msg) {
@@ -168,36 +182,198 @@ if (S.seaDreamActive) return { sky: '#bfe3ee', ground: '#d8ecdf', dirt: '#8a6a48
 return { sky: '#cfe8b8', ground: '#a8d98a', dirt: '#8a6a48', pit: '#5a4630'};
 }
 
+/* ---------------- interaction visuals (feedback only, no rules) ---------------- */
+
+// Bone tiers (spec D1.1 quality ladder: plain -> meaty -> gold -> fossil).
+// VISUAL-ONLY mapping from one dig's yield — the economy is untouched:
+// the rare strange bonus shows as a fossil find, 6+ bones as gold,
+// 3-5 as meaty, otherwise plain. Deeper layers (where fossils would
+// naturally live) are not in the MVP, so the rare bonus is the only
+// way a fossil appears for now.
+function boneTierFor(got, rare) {
+if (rare) return 'fossil';
+if (got >= 6) return 'gold';
+if (got >= 3) return 'meaty';
+return 'plain';
+}
+
+const BONE_COLORS = {
+plain: '#f5e9c8', meaty: '#f5e9c8', gold: '#f2c233', fossil: '#9a8a76',
+};
+
+// Programmatic pixel bone sprite (8x6 grid, no image files needed).
+// Drawn centered at (x, y); u is the pixel unit size.
+function drawBonePixel(c, x, y, u, tier) {
+const grid = [
+'XX....XX',
+'XXX..XXX',
+'.XXXXXX.',
+'.XXXXXX.',
+'XXX..XXX',
+'XX....XX',
+];
+const col = BONE_COLORS[tier] || BONE_COLORS.plain;
+const w = 8 * u, h = 6 * u;
+const ox = Math.round(x - w / 2), oy = Math.round(y - h / 2);
+c.fillStyle = col;
+grid.forEach((row, ry) => {
+for (let rx = 0; rx < row.length; rx++) {
+if (row[rx] === 'X') c.fillRect(ox + rx * u, oy + ry * u, u, u);
+}
+});
+// Tier dressing: meat bits, gold sparkle, fossil crack.
+if (tier === 'meaty') {
+c.fillStyle = '#d23b2e';
+c.fillRect(ox + 2 * u, oy + 1 * u, u, u);
+c.fillRect(ox + 5 * u, oy + 4 * u, u, u);
+} else if (tier === 'gold') {
+c.fillStyle = '#fff3b0';
+c.fillRect(ox + 3 * u, oy + 2 * u, u, u);
+} else if (tier === 'fossil') {
+c.fillStyle = '#5a4630';
+c.fillRect(ox + 1 * u, oy + 2 * u, u, u);
+c.fillRect(ox + 2 * u, oy + 3 * u, u, u);
+c.fillRect(ox + 4 * u, oy + 2 * u, u, u);
+}
+}
+
+// Tiny pixel heart for the pet reaction (5x5 grid).
+function drawHeartPixel(c, x, y, u) {
+const grid = ['XX.XX', 'XXXXX', 'XXXXX', '.XXX.', '..X..'];
+c.fillStyle = '#f27aa0';
+grid.forEach((row, ry) => {
+for (let rx = 0; rx < row.length; rx++) {
+if (row[rx] === 'X') c.fillRect(Math.round(x - 2.5 * u) + rx * u, Math.round(y - 2.5 * u) + ry * u, u, u);
+}
+});
+}
+
+function dogBox() {
+return { left: dogX - DOG_BOX / 2, top: DOG_TOP, size: DOG_BOX };
+}
+
+// Dog motion: RUNS to the selected scent point, otherwise wanders
+// (walk to a random spot, pause, walk again). Called every frame with
+// an explicit dt so it is deterministic under test.
+function updateDogMotion(now, dtMs) {
+if (S.phase !== 'dream') return;
+if (selectedPoint) {
+dogPauseUntil = 0;
+const target = selectedPoint.x;
+const step = 320 * dtMs / 1000;
+if (Math.abs(target - dogX) <= step) { dogX = target; return; }
+dogX += Math.sign(target - dogX) * step;
+return;
+}
+if (dogTargetX === null) {
+if (now < dogPauseUntil) return;
+dogTargetX = 90 + Math.random() * 300; // wander within [90, 390]
+return;
+}
+const step = 55 * dtMs / 1000;
+if (Math.abs(dogTargetX - dogX) <= step) {
+dogX = dogTargetX;
+dogTargetX = null;
+dogPauseUntil = now + 1000 + Math.random() * 2000;
+return;
+}
+dogX += Math.sign(dogTargetX - dogX) * step;
+}
+
 function drawScene() {
 const pal = scenePalette();
+const now = Date.now();
 ctx.fillStyle = pal.sky;
 ctx.fillRect(0, 0, canvas.width, canvas.height);
 ctx.fillStyle = pal.ground;
 ctx.fillRect(0, 200, canvas.width, 100);
-// Dig pit.
+
+// Scent-point markers on the ground (visible targets the dog runs to).
+// Colors: strong amber, light green, strange purple; selected gets a ring.
+if (scentsRevealed) {
+const colors = { strong: '#c96a2b', light: '#7fb069', strange: '#9b5de5' };
+scentPoints.forEach((p) => {
+const col = colors[p.type] || '#888888';
+ctx.fillStyle = col;
+for (let i = 0; i < 3; i++) {
+const wx = p.x - 8 + i * 8;
+const wy = 232 + Math.sin(now / 300 + i) * 2;
+ctx.fillRect(wx, wy, 3, 10);
+}
+if (selectedPoint === p) {
+ctx.strokeStyle = '#ffd23b';
+ctx.lineWidth = 3;
+ctx.beginPath();
+ctx.ellipse(p.x, 248, 30, 10, 0, 0, Math.PI * 2);
+ctx.stroke();
+}
+});
+}
+
+// Dig pits dug this dream (persist until the next dream starts).
+holes.forEach((h) => {
 ctx.fillStyle = pal.pit;
 ctx.beginPath();
-ctx.ellipse(300, 250, 46, 14, 0, 0, Math.PI * 2);
+ctx.ellipse(h.x, 250, 26, 8, 0, 0, Math.PI * 2);
 ctx.fill();
 ctx.fillStyle = pal.dirt;
 ctx.beginPath();
-ctx.ellipse(300, 250, 34, 9, 0, 0, Math.PI * 2);
+ctx.ellipse(h.x, 250, 18, 5, 0, 0, Math.PI * 2);
 ctx.fill();
+});
+
+// Bone pile, bottom-right: grows with this dream's bone count
+// (visual only, capped at 8 sprites).
+if (S.bones > 0) {
+const n = Math.min(8, 1 + Math.floor(S.bones / 40));
+for (let i = 0; i < n; i++) {
+drawBonePixel(ctx, 415 + (i % 3) * 16, 272 + Math.floor(i / 3) * 10, 2, 'plain');
+}
+}
 
 // Dog: real art when loaded (js/art.js), else the old placeholder.
-// drawArtDog handles its own bob/tilt, so the placeholder path keeps
-// the original bob math untouched.
+// Position comes from dogX (roaming / running to the scent point);
+// pet reactions ride on top via opts (bounce + faster wag).
+const box = dogBox();
 if (typeof drawArtDog !== 'function' || !drawArtDog(ctx, S.breed, S.stage, {
 glitch: S.glitchUnlocked,
 glow: S.stage >= 3,
+dx: box.left, dy: box.top,
+petBounce: now < petReactUntil,
+wagBoost: now < petWagUntil,
 })) {
-const bob = Date.now() < digAnimUntil? Math.sin(Date.now() / 60) * 4: 0;
-const px = 6;
-drawDogSprite(ctx, S.breed, S.stage, px, 150, 150 + bob, {
+const bob = now < digAnimUntil? Math.sin(now / 60) * 4: 0;
+drawDogSprite(ctx, S.breed, S.stage, 6, box.left + 39, 196 + bob, {
 glitch: S.glitchUnlocked,
 glow: S.stage >= 3,
 });
 }
+
+// Dirt + heart particles (age-based, so they animate between ticks).
+particles = particles.filter((pt) => now - pt.born < pt.life);
+particles.forEach((pt) => {
+const age = (now - pt.born) / 1000;
+if (pt.kind === 'dirt') {
+const px = pt.x + pt.vx * age;
+const py = pt.y + pt.vy * age + 0.5 * 300 * age * age;
+ctx.fillStyle = 'rgba(138, 106, 72, ' + Math.max(0, 1 - age / (pt.life / 1000)).toFixed(2) + ')';
+ctx.fillRect(px, py, 4, 4);
+} else {
+const py = pt.y + pt.vy * age;
+ctx.globalAlpha = Math.max(0, 1 - age / (pt.life / 1000));
+drawHeartPixel(ctx, pt.x, py, 3);
+ctx.globalAlpha = 1;
+}
+});
+
+// Flying bones: arc from the dig spot toward the HUD counter corner.
+flyingBones = flyingBones.filter((b) => now - b.born < b.dur);
+flyingBones.forEach((b) => {
+const p = (now - b.born) / b.dur;
+const fx = b.x0 + (b.x1 - b.x0) * p;
+const fy = b.y0 + (b.y1 - b.y0) * p - Math.sin(Math.PI * p) * 30;
+drawBonePixel(ctx, fx, fy, 3, b.tier);
+});
 
 // Shadow-teaser pawprints (D9 recipe 4, teaser form only).
 if (S.shadowTeaserSeen && S.scene === 'meadow') {
@@ -220,15 +396,25 @@ ctx.fillRect(x, y, 3, 3);
 }
 
 // Clicking the dog counts as a tap (H02 counter). The Pet button does the same.
+// The click box follows the roaming dog; the reaction (bounce + fast wag
+// + hearts) is added ON TOP of the counter, never instead of it.
 canvas.addEventListener('click', (e) => {
 if (S.phase!== 'dream') return;
 const r = canvas.getBoundingClientRect();
 const x = (e.clientX - r.left) * (canvas.width / r.width);
 const y = (e.clientY - r.top) * (canvas.height / r.height);
-if (x >= 150 && x <= 150 + 12 * 6 && y >= 140 && y <= 150 + 9 * 6 + 10) petDog();
+const box = dogBox();
+if (x >= box.left && x <= box.left + box.size && y >= box.top && y <= box.top + box.size) petDog();
 });
 
 function petDog() {
+const now = Date.now();
+petReactUntil = now + 650; // happy bounce
+petWagUntil = now + 2000; // faster tail wag for a moment
+for (let i = 0; i < 3; i++) {
+particles.push({ kind: 'heart', x: dogX - 20 + i * 20, y: 130,
+vx: 0, vy: -35, born: now, life: 900 });
+}
 S.taps += 1;
 if (!S.glitchUnlocked && S.taps > GLITCH_TAPS && Math.random() < GLITCH_CHANCE) {
 S.glitchUnlocked = true;
@@ -248,7 +434,11 @@ for (let i = types.length - 1; i > 0; i--) {
 const j = Math.floor(Math.random() * (i + 1));
 [types[i], types[j]] = [types[j], types[i]];
 }
-scentPoints = types.map((t) => ({ type: t,...SCENT_TYPES[t]}));
+// Each scent point gets a canvas x-position (spread across the ground)
+// so the dog has somewhere visible to run to when it is selected.
+const SCENT_SPOTS = [100, 240, 380];
+scentPoints = types.map((t, i) => ({ type: t,...SCENT_TYPES[t],
+x: SCENT_SPOTS[i] + Math.floor(Math.random() * 20) - 10 }));
 selectedPoint = null;
 }
 
@@ -267,15 +457,17 @@ renderDreamControls();
 
 function selectPoint(i) {
 selectedPoint = scentPoints[i];
+dogTargetX = selectedPoint.x; // the dog RUNS to this spot, then digs there
 log('选中：' + selectedPoint.label + '（' + selectedPoint.hint + '）。按“刨！”开挖。');
 renderDreamControls();
 }
 
 function digYield(point) {
+lastDigRare = false;
 let bones = point.bones;
 if (point.type === 'strange') {
 bones = 1 + Math.floor(Math.random() * 6);
-if (Math.random() < 0.12) { bones += 5; log('挖出稀有骨！+5');}
+if (Math.random() < 0.12) { bones += 5; lastDigRare = true; log('挖出稀有骨！+5');}
 }
 bones += affinityBonus(S.breed, point.type);
 bones += S.digPower;
@@ -291,6 +483,17 @@ if (now - lastDigAt < selectedPoint.cooldownMs) return;
 lastDigAt = now;
 digAnimUntil = now + 500;
 const got = digYield(selectedPoint);
+// Visible dig feedback (numbers unchanged): a pit at the dog's spot,
+// flying dirt, and a bone sprite that pops out and flies to the counter.
+if (holes.length >= 24) holes.shift();
+holes.push({ x: dogX });
+for (let i = 0; i < 10; i++) {
+particles.push({ kind: 'dirt', x: dogX, y: 245,
+vx: -60 + Math.random() * 120, vy: -140 + Math.random() * 80,
+born: now, life: 700 });
+}
+flyingBones.push({ x0: dogX, y0: 235, x1: 435, y1: 18,
+born: now, dur: 650, tier: boneTierFor(got, lastDigRare) });
 S.bones += got;
 S.totalBonesThisDream += got;
 S.layerBones += got;
@@ -378,7 +581,7 @@ if (S.upgrades[lineKey] >= 2) return;
 if (S.settlement < UPGRADE_COST) { log('结算资源不够：升级需要 ' + UPGRADE_COST + '。'); return;}
 S.settlement -= UPGRADE_COST;
 S.upgrades[lineKey] = 2;
-log(line.label + '升级：' + line.from + ' → ' + line.to + '。');
+wakeNote(line.label + '升级：' + line.from + ' → ' + line.to + '（家当升级，不占醒来名额）。');
 save();
 renderWake();
 }
@@ -448,6 +651,11 @@ wakePick = { eat: null, play: null, sleep: null };
 S.meteorNight = Math.random() < 0.15;
 if (S.meteorNight) unlockCodex('meteor-night', true);
 scentsRevealed = false;
+// Fresh dream, fresh ground: pits, particles and flying bones reset,
+// and the dog starts back at the center of the scene.
+holes = []; particles = []; flyingBones = [];
+dogX = 210; dogTargetX = null; dogPauseUntil = 0;
+petReactUntil = 0; petWagUntil = 0;
 hideEvolutionBanner();
 rollScentPoints();
 // Default scene: meadow unless the player picked snowfield on the dream screen.
@@ -463,8 +671,39 @@ function fmtTime(s) {
 return Math.floor(s / 60) + '分' + String(s % 60).padStart(2, '0') + '秒';
 }
 
+// Wake-phase confirmation: picking eat/play/sleep or buying an upgrade
+// used to only grey out the button, which felt like clicking through a
+// menu. Every pick now also writes one visible line in the wake panel
+// (plus the log) stating what was chosen and what it does. Text only —
+// no new art for the house, bowl, or pad.
+function wakeNote(msg) {
+const el = $('wake-pick-note');
+if (el) el.textContent = '已选：' + msg;
+log(msg);
+}
+
+const WAKE_PICK_NOTES = {
+eat: {
+kibble: '狗粮：饱餐一顿（无跨局效果；三文鱼连吃进度清零）。',
+salmon: '三文鱼：三文鱼连吃进度 +1，连吃 3 次 → 下一场梦开出隐藏海梦。',
+feast: '骨头大餐：大吃一顿（无跨局效果；三文鱼连吃进度清零）。',
+},
+play: {
+park: '公园疯跑：夜里草地上会多一串湿脚印——它来过，你还没见过它（影子预告）。',
+'night-road': '夜路散步：出去走了一圈（无跨局效果）。',
+shelter: '收容所看看：去看了一圈（无跨局效果）。',
+'yard-corner': '院子角落转转：院子角落进度 +1，转满 3 次 → 那块地长出梦花。',
+},
+sleep: {
+cardboard: '纸箱：纸箱连选进度 +1（纸箱之神需先拥有狗别墅，MVP 仅记进度）。',
+mat: '垫子：在垫子上睡（无跨局效果）。',
+},
+};
+
 function renderHUD() {
+const dogName = S.name || (S.breed && BREEDS[S.breed] ? BREEDS[S.breed].name : '');
 $('hud').textContent =
+(dogName ? dogName + ' · ' : '') +
 String(S.stage).padStart(3, '0') + ' ' + stageName() + ' ' +
 ' 骨头 ' + S.bones +
 ' | 刨力 +' + S.digPower +
@@ -566,7 +805,13 @@ opts.forEach(([val, label]) => {
 const b = document.createElement('button');
 b.textContent = label;
 b.disabled = wakePick[kind] === val;
-b.onclick = () => { wakePick[kind] = val; renderWake();};
+b.onclick = () => {
+wakePick[kind] = val;
+const note = WAKE_PICK_NOTES[kind] && WAKE_PICK_NOTES[kind][val];
+wakeNote((kind === 'eat' ? '吃：' : kind === 'play' ? '玩：' : '睡：') + label +
+(note ? '——' + note : ''));
+renderWake();
+};
 box.appendChild(b);
 });
 }
@@ -648,5 +893,21 @@ renderHUD();
 drawScene();
 }
 }, 200);
+
+// Per-frame loop: roaming dog, particles, and flying bones need smooth
+// motion, which the 200ms tick cannot give. drawScene is idempotent
+// (it only paints current state), so redrawing every frame is safe.
+function frameLoop(now) {
+if (S.phase === 'dream') {
+const dt = lastFrameAt ? now - lastFrameAt : 16;
+lastFrameAt = now;
+updateDogMotion(now, dt);
+drawScene();
+} else {
+lastFrameAt = 0;
+}
+if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frameLoop);
+}
+if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frameLoop);
 
 renderAll();
