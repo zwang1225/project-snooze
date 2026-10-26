@@ -184,13 +184,20 @@ ctx.beginPath();
 ctx.ellipse(300, 250, 34, 9, 0, 0, Math.PI * 2);
 ctx.fill();
 
-// Dog, bobbing while the dig animation runs.
+// Dog: real art when loaded (js/art.js), else the old placeholder.
+// drawArtDog handles its own bob/tilt, so the placeholder path keeps
+// the original bob math untouched.
+if (typeof drawArtDog !== 'function' || !drawArtDog(ctx, S.breed, S.stage, {
+glitch: S.glitchUnlocked,
+glow: S.stage >= 3,
+})) {
 const bob = Date.now() < digAnimUntil? Math.sin(Date.now() / 60) * 4: 0;
 const px = 6;
 drawDogSprite(ctx, S.breed, S.stage, px, 150, 150 + bob, {
 glitch: S.glitchUnlocked,
 glow: S.stage >= 3,
 });
+}
 
 // Shadow-teaser pawprints (D9 recipe 4, teaser form only).
 if (S.shadowTeaserSeen && S.scene === 'meadow') {
@@ -245,7 +252,9 @@ scentPoints = types.map((t) => ({ type: t,...SCENT_TYPES[t]}));
 selectedPoint = null;
 }
 
+let lastSniffAt = 0; // drives the sniff pulse in js/art.js (not a rule)
 function doSniff() {
+lastSniffAt = Date.now();
 // The banner gives way to the next action (it was shown by a previous one).
 hideEvolutionBanner();
 scentsRevealed = true;
