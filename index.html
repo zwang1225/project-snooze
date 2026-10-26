@@ -7,80 +7,131 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<h1>project-snooze <small>原型 MVP 1（内部代号，非产品名）</small></h1>
-<p id="phase-label">选狗</p>
-
-<div id="setup">
-  <h2>选一只狗当主角</h2>
-  <div id="breed-box">
-    <button data-breed="pomeranian">博美（光线 · 鼻子）</button>
-    <button data-breed="husky">哈士奇（冰线 · 蛮力）</button>
-    <button data-breed="shiba">柴犬（影线 · 怪味）</button>
-  </div>
-  <p>
-    名字（可跳过，默认用品种名）：<input id="name-input" type="text" maxlength="12" placeholder="比如：阿金">
-    <button id="btn-start">睡过去，开第一场梦</button>
-  </p>
-  <p class="hint">开局提示：先按“闻一闻”找出坑，再让狗走过去、靠近按“刨！”。60 秒内第一次进化。</p>
-</div>
-
-<div id="game" style="display:none">
-  <canvas id="scene" width="480" height="300"></canvas>
-  <p id="hud"></p>
-  <div id="evolution-banner" style="display:none"><span id="evolution-banner-text"></span> <button id="btn-dismiss-banner">知道了</button></div>
-  <p id="latest-msg"></p>
-  <div id="xp-bar-wrap"><div id="xp-bar"></div></div>
-  <p id="next-hint" style="display:none"></p>
-  <p>
-    <button id="btn-meadow">回草地</button>
-    <button id="btn-snowfield">雪原（第一次醒来后解锁）</button>
-    <button id="btn-codex">图鉴</button>
-    <button id="btn-reset">重开（清存档）</button>
-  </p>
-  <p id="scene-note"></p>
-
-  <div id="dream-panel">
-    <h2>梦里</h2>
+<div id="game-frame">
+  <!-- start screen: an overlay inside the frame -->
+  <div id="setup">
+    <h2>选一只狗当主角</h2>
+    <div id="breed-box">
+      <button data-breed="pomeranian">博美（光线 · 鼻子）</button>
+      <button data-breed="husky">哈士奇（冰线 · 蛮力）</button>
+      <button data-breed="shiba">柴犬（影线 · 怪味）</button>
+    </div>
     <p>
-      <button id="btn-sniff">闻一闻</button>
-      <button id="btn-dig">刨！</button>
-      <button id="btn-pet">摸摸它（点狗计数）</button>
-      <button id="btn-auto">自动</button>
-      <button id="btn-wake">醒来（手动结算）</button>
+      名字（可跳过，默认用品种名）：<input id="name-input" type="text" maxlength="12" placeholder="比如：阿金">
+      <button id="btn-start">睡过去，开第一场梦</button>
     </p>
-    <div id="scent-box"></div>
-    <p>
-      <button id="btn-spend">花骨头：20 根 → 本梦刨力 +1（马上变强）</button>
-      <button id="btn-bury">埋骨头：埋 10 根，60 秒后挖出变多</button>
-    </p>
-    <p id="bury-status"></p>
-    <p class="hint">点画面空白处让狗走过去，WASD / 方向键也能走；走近坑按“刨！”。点画面里的狗是摸摸它。自动买断后，狗会自己走、自己找普通坑刨。</p>
-    <p class="hint">第二层：第一层挖空（300 根）后显示为锁定，原型不做更深的层。</p>
+    <p class="hint">开局提示：先按“闻一闻”找出坑，再让狗走过去、靠近按“刨！”。60 秒内第一次进化。</p>
   </div>
 
-  <div id="wake-panel" style="display:none">
-    <h2>醒着（现实小屋）</h2>
-    <p id="wake-breakdown"></p>
-    <h3>升级家当（花结算资源，不占醒来名额；每线可升至 5 级）</h3>
-    <div id="upgrade-box"></div>
-    <h3>吃 1 格</h3>
-    <div id="eat-box"></div>
-    <h3>玩 1 格</h3>
-    <div id="play-box"></div>
-    <h3>睡 1 格</h3>
-    <div id="sleep-box"></div>
-    <p id="sleep-note"></p>
-    <p id="wake-pick-note"></p>
-    <p><button id="btn-sleep">睡过去，开下一场梦</button></p>
-  </div>
+  <div id="game">
+    <canvas id="scene" width="960" height="600"></canvas>
 
-  <div id="codex-panel" style="display:none">
-    <h2>图鉴</h2>
-    <div id="codex-box"></div>
-  </div>
+    <!-- top HUD bar, inside the frame -->
+    <div id="hud-bar">
+      <div id="hud-top">
+        <span id="phase-label">选狗</span>
+        <span id="hud"></span>
+      </div>
+      <div id="hud-mid">
+        <span id="next-objective"></span>
+        <button id="btn-pin">钉住目标</button>
+      </div>
+      <div id="xp-bar-wrap"><div id="xp-bar"></div></div>
+      <div id="menu-row">
+        <button id="btn-meadow">回草地</button>
+        <button id="btn-snowfield">雪原（第一次醒来后解锁）</button>
+        <button id="btn-codex">图鉴</button>
+        <button id="btn-howto">玩法</button>
+        <button id="btn-log">日志</button>
+        <button id="btn-reset">重开（清存档）</button>
+      </div>
+    </div>
 
-  <h2>日志</h2>
-  <pre id="log"></pre>
+    <div id="evolution-banner" style="display:none"><span id="evolution-banner-text"></span> <button id="btn-dismiss-banner">知道了</button></div>
+    <p id="next-hint" style="display:none"></p>
+
+    <!-- dream action bar, inside the frame -->
+    <div id="dream-panel">
+      <p id="latest-msg"></p>
+      <p id="dog-status"></p>
+      <p>
+        <button id="btn-sniff">闻一闻</button>
+        <button id="btn-dig">刨！</button>
+        <button id="btn-pet">摸摸它（点狗计数）</button>
+        <button id="btn-auto">自动</button>
+        <button id="btn-wake">醒来（手动结算）</button>
+      </p>
+      <p>
+        <button id="btn-spend">花骨头：20 根 → 本梦刨力 +1（马上变强）</button>
+        <button id="btn-bury">埋骨头：埋 10 根，60 秒后挖出变多</button>
+      </p>
+      <p id="bury-status"></p>
+      <p class="hint">点画面空白处让狗走过去，WASD / 方向键也能走；走近坑按“刨！”。点画面里的狗是摸摸它。自动买断后，狗会自己走、自己找普通坑刨。</p>
+      <p class="hint">第二层：第一层挖空（300 根）后显示为锁定，原型不做更深的层。</p>
+    </div>
+
+    <!-- wake overlay panel, inside the frame -->
+    <div id="wake-panel" style="display:none">
+      <div class="panel-card">
+        <h2>醒着（现实小屋）</h2>
+        <p id="wake-breakdown"></p>
+        <p id="wake-progress"></p>
+        <h3>升级家当（花结算资源，不占醒来名额；每线可升至 5 级）</h3>
+        <div id="upgrade-box"></div>
+        <h3>吃 1 格</h3>
+        <div id="eat-box"></div>
+        <h3>玩 1 格</h3>
+        <div id="play-box"></div>
+        <h3>睡 1 格</h3>
+        <div id="sleep-box"></div>
+        <p id="sleep-note"></p>
+        <p id="wake-pick-note"></p>
+        <p><button id="btn-sleep">睡过去，开下一场梦</button></p>
+      </div>
+    </div>
+
+    <!-- codex overlay, inside the frame -->
+    <div id="codex-panel" style="display:none">
+      <div class="panel-card">
+        <h2>图鉴</h2>
+        <div id="codex-box"></div>
+        <p><button id="btn-close-codex">关掉</button></p>
+      </div>
+    </div>
+
+    <!-- how-to overlay, inside the frame -->
+    <div id="howto-panel" style="display:none">
+      <div class="panel-card">
+        <h2>玩法</h2>
+        <ol>
+          <li>闻：按“闻一闻”找出坑（味浓土硬出大货慢、味淡土松出快货少、味怪未知）。</li>
+          <li>走：点画面空白处或按 WASD，让狗走过去；走近坑出现黄圈。</li>
+          <li>刨：黄圈内按“刨！”挖骨头；骨头能花（刨力 +1）或埋（60 秒后变多）。</li>
+          <li>醒：推不动就按“醒来”结算；醒来选吃 1 格、玩 1 格、睡 1 格，再睡过去开下一场梦。家当升级花结算资源，不占醒来名额。</li>
+        </ol>
+        <p>自动：第一次醒来后 100 根骨头一次买断，狗会自己走、自己找普通坑刨；味怪坑仍要你亲选。</p>
+        <p><button id="btn-close-howto">关掉</button></p>
+      </div>
+    </div>
+
+    <!-- log overlay, inside the frame -->
+    <div id="log-panel" style="display:none">
+      <div class="panel-card">
+        <h2>日志</h2>
+        <pre id="log"></pre>
+        <p><button id="btn-close-log">关掉</button></p>
+      </div>
+    </div>
+
+    <!-- reset confirm overlay, inside the frame -->
+    <div id="confirm-panel" style="display:none">
+      <div class="panel-card">
+        <h2>重开确认</h2>
+        <p>重开会清空全部存档：主角、骨头、结算资源、家当等级、图鉴、自动买断，全部从头开始。这个操作不能撤销。</p>
+        <p><button id="btn-confirm-reset">确认重开</button> <button id="btn-cancel-reset">取消</button></p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="js/storage.js"></script>

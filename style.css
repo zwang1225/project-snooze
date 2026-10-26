@@ -1,15 +1,42 @@
-body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; line-height: 1.6; color: #222; }
-h1 small { font-size: 14px; color: #666; }
-canvas { border: 2px solid #333; image-rendering: pixelated; background: #cfe8b8; display: block; }
+* { box-sizing: border-box; }
+body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0 auto; padding: 12px; line-height: 1.6; color: #222; }
 button { margin: 2px; padding: 6px 10px; cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.5; }
 .hint { color: #666; font-size: 14px; }
-.codex-entry { border-bottom: 1px solid #ddd; padding: 4px 0; }
-#log { background: #f4f4f4; padding: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
-#scent-box button, #eat-box button, #play-box button, #sleep-box button, #upgrade-box button { display: inline-block; }
-/* Selected scent point must read as SELECTED, never as disabled/locked. */
-#evolution-banner { background: #ffe97a; border: 3px solid #e67e22; padding: 10px 12px; font-size: 20px; font-weight: bold; margin: 8px 0; }
-#latest-msg { background: #eef6ff; border-left: 4px solid #4a90d9; padding: 6px 8px; }
+
+/* The game is one frame: canvas fills it, every control overlays inside it. */
+#game-frame { position: relative; width: 960px; max-width: 100%; margin: 0 auto; border: 2px solid #333; aspect-ratio: 8 / 5; background: #cfe8b8; }
+#game { position: absolute; inset: 0; }
+#scene { width: 100%; height: 100%; display: block; image-rendering: pixelated; background: #cfe8b8; }
+
+/* Start screen: an opaque overlay covering the frame. */
+#setup { position: absolute; inset: 0; z-index: 30; background: #fdfdf6; padding: 24px; overflow: auto; }
+
+/* Top HUD bar, inside the frame. */
+#hud-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 10; background: rgba(255, 255, 255, 0.88); padding: 6px 10px; font-size: 14px; }
+#hud-top, #hud-mid { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#phase-label { font-weight: bold; }
+#menu-row { display: flex; gap: 2px; flex-wrap: wrap; }
 #xp-bar-wrap { background: #ddd; height: 12px; margin: 4px 0; }
 #xp-bar { background: #4caf50; height: 12px; width: 0%; }
-#next-hint { color: #555; }
+
+/* Evolution banner floats below the HUD bar, inside the frame. */
+#evolution-banner { position: absolute; top: 118px; left: 50%; transform: translateX(-50%); z-index: 11; background: #ffe97a; border: 3px solid #e67e22; padding: 10px 12px; font-size: 20px; font-weight: bold; white-space: nowrap; }
+#next-hint { position: absolute; top: 178px; left: 50%; transform: translateX(-50%); z-index: 11; color: #555; background: rgba(255, 255, 255, 0.85); padding: 2px 8px; }
+
+/* Dream action bar, docked to the bottom inside the frame. */
+#dream-panel { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; background: rgba(255, 255, 255, 0.88); padding: 6px 10px; font-size: 14px; max-height: 46%; overflow: auto; }
+#latest-msg { background: #eef6ff; border-left: 4px solid #4a90d9; padding: 6px 8px; margin: 4px 0; }
+#dog-status { margin: 4px 0; color: #555; }
+#bury-status { margin: 4px 0; }
+
+/* Overlay panels (wake / codex / how-to / log / confirm) float inside the frame. */
+#wake-panel, #codex-panel, #howto-panel, #log-panel, #confirm-panel { position: absolute; inset: 0; z-index: 20; background: rgba(0, 0, 0, 0.45); overflow: auto; padding: 4% 6%; }
+.panel-card { background: #fff; padding: 16px 20px; max-height: 100%; overflow: auto; }
+#log { background: #f4f4f4; padding: 8px; max-height: 300px; overflow: auto; white-space: pre-wrap; }
+
+/* Codex as a grid of slots; upgrades as cards. */
+#codex-box { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 12px; }
+.codex-entry { border-bottom: 1px solid #ddd; padding: 4px 0; }
+#upgrade-box button { display: block; width: 100%; text-align: left; }
+#eat-box button, #play-box button, #sleep-box button { display: inline-block; }
