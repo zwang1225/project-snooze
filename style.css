@@ -4,17 +4,18 @@ button { margin: 2px; padding: 6px 10px; cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.5; }
 .hint { color: #666; font-size: 14px; }
 
-/* The game is one frame: canvas fills it, every control overlays inside it. */
-#game-frame { position: relative; width: 960px; max-width: 100%; margin: 0 auto; border: 2px solid #333; aspect-ratio: 8 / 5; background: #cfe8b8; }
-#game { position: absolute; inset: 0; }
-#stage { position: absolute; inset: 0; }
-#scene { width: 100%; height: 100%; display: block; image-rendering: pixelated; background: #cfe8b8; }
+/* D25: stacked, never overlaid. The frame is a column — HUD, canvas,
+   action bar — sized by its content. Nothing persistent covers the
+   canvas, so the dog and pits in the ground band stay visible. */
+#game-frame { position: relative; width: 960px; max-width: 100%; margin: 0 auto; border: 2px solid #333; background: #cfe8b8; }
+#stage { position: relative; }
+#scene { width: 100%; height: auto; aspect-ratio: 8 / 5; display: block; image-rendering: pixelated; background: #cfe8b8; }
 
 /* Start screen: an opaque overlay covering the frame. */
 #setup { position: absolute; inset: 0; z-index: 30; background: #fdfdf6; padding: 24px; overflow: auto; }
 
-/* Top HUD bar, inside the frame. */
-#hud-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 10; background: rgba(255, 255, 255, 0.88); padding: 6px 10px; font-size: 14px; }
+/* Top HUD bar, stacked above the canvas. */
+#hud-bar { background: rgba(255, 255, 255, 0.88); padding: 6px 10px; font-size: 14px; }
 #hud-top, #hud-mid { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 #phase-label { font-weight: bold; }
 #menu-row { display: flex; gap: 2px; flex-wrap: wrap; }
@@ -26,12 +27,12 @@ button:disabled { cursor: default; opacity: 0.5; }
 .scene-arrow.left { left: 6px; }
 .scene-arrow.right { right: 6px; }
 
-/* Evolution banner floats below the HUD bar, inside the frame. */
-#evolution-banner { position: absolute; top: 118px; left: 50%; transform: translateX(-50%); z-index: 11; background: #ffe97a; border: 3px solid #e67e22; padding: 10px 12px; font-size: 20px; font-weight: bold; white-space: nowrap; }
-#next-hint { position: absolute; top: 178px; left: 50%; transform: translateX(-50%); z-index: 11; color: #555; background: rgba(255, 255, 255, 0.85); padding: 2px 8px; }
+/* Evolution banner floats over the canvas top (transient, dismissible). */
+#evolution-banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 11; background: #ffe97a; border: 3px solid #e67e22; padding: 10px 12px; font-size: 20px; font-weight: bold; white-space: nowrap; }
+#next-hint { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); z-index: 11; color: #555; background: rgba(255, 255, 255, 0.85); padding: 2px 8px; }
 
-/* Dream action bar, docked to the bottom inside the frame. */
-#dream-panel { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; background: rgba(255, 255, 255, 0.88); padding: 6px 10px; font-size: 14px; max-height: 46%; overflow: auto; }
+/* Dream action bar, stacked below the canvas. */
+#dream-panel { background: rgba(255, 255, 255, 0.88); padding: 6px 10px; font-size: 14px; }
 #latest-msg { background: #eef6ff; border-left: 4px solid #4a90d9; padding: 6px 8px; margin: 4px 0; }
 #dog-status { margin: 4px 0; color: #555; }
 #bury-status { margin: 4px 0; }
@@ -47,22 +48,15 @@ button:disabled { cursor: default; opacity: 0.5; }
 #upgrade-box button { display: block; width: 100%; text-align: left; }
 #eat-box button, #play-box button, #sleep-box button { display: inline-block; }
 
-/* Narrow screens (D24): stop overlaying. A 960x600 frame shrunk to phone
-   width is ~225px tall, far too short for fixed-size DOM overlays — the
-   HUD ate half the frame and the action bar got clipped. So on phones
-   the canvas keeps its aspect on top and the HUD / action bar become
-   static blocks stacked below it; the page scrolls. Desktop layout
-   above is untouched. */
+/* Narrow screens (D25): stacking is now the base layout at every width,
+   so this query only shrinks type and padding. */
 @media (max-width: 640px) {
   body { padding: 6px; }
-  #game-frame { width: 100%; aspect-ratio: auto; height: auto; }
-  #game { position: static; }
-  #stage { position: relative; }
-  #scene { height: auto; aspect-ratio: 8 / 5; }
-  #hud-bar { position: static; font-size: 13px; padding: 6px 8px; }
-  #dream-panel { position: static; max-height: none; overflow: visible; font-size: 13px; padding: 6px 8px; }
-  #evolution-banner { top: 8px; font-size: 16px; padding: 6px 10px; white-space: normal; text-align: center; max-width: 92%; }
-  #next-hint { top: 62px; font-size: 12px; }
+  #game-frame { width: 100%; }
+  #hud-bar { font-size: 13px; padding: 6px 8px; }
+  #dream-panel { font-size: 13px; padding: 6px 8px; }
+  #evolution-banner { font-size: 16px; padding: 6px 10px; white-space: normal; text-align: center; max-width: 92%; }
+  #next-hint { font-size: 12px; }
   .scene-arrow { font-size: 24px; padding: 8px 10px; }
   button { padding: 5px 8px; }
 }
