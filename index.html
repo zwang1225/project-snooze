@@ -24,18 +24,9 @@
   </div>
 
   <div id="game">
-    <!-- stage: canvas + things positioned on it (arrows, banner).
-         Desktop: fills the frame. Narrow screens: a relative block on
-         top, with the HUD / action bar stacked below it (D24). -->
-    <div id="stage">
-      <canvas id="scene" width="960" height="600"></canvas>
-      <button id="btn-scene-prev" class="scene-arrow left" style="display:none">‹</button>
-      <button id="btn-scene-next" class="scene-arrow right" style="display:none">›</button>
-      <div id="evolution-banner" style="display:none"><span id="evolution-banner-text"></span> <button id="btn-dismiss-banner">知道了</button></div>
-      <p id="next-hint" style="display:none"></p>
-    </div>
-
-    <!-- top HUD bar, inside the frame -->
+    <!-- D25: stacked, never overlaid. Order is HUD, canvas, action bar;
+         nothing persistent covers the canvas, so the dog and the pits
+         in the ground band are always visible. -->
     <div id="hud-bar">
       <div id="hud-top">
         <span id="phase-label">选狗</span>
@@ -54,7 +45,17 @@
       </div>
     </div>
 
-    <!-- dream action bar, inside the frame -->
+    <!-- stage: canvas + things positioned on it (arrows, banner).
+         The banner is transient (dismissible), not persistent UI. -->
+    <div id="stage">
+      <canvas id="scene" width="960" height="600"></canvas>
+      <button id="btn-scene-prev" class="scene-arrow left" style="display:none">‹</button>
+      <button id="btn-scene-next" class="scene-arrow right" style="display:none">›</button>
+      <div id="evolution-banner" style="display:none"><span id="evolution-banner-text"></span> <button id="btn-dismiss-banner">知道了</button></div>
+      <p id="next-hint" style="display:none"></p>
+    </div>
+
+    <!-- dream action bar, below the canvas -->
     <div id="dream-panel">
       <p id="latest-msg"></p>
       <p id="dog-status"></p>
