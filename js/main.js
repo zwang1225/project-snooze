@@ -51,9 +51,9 @@ yard: ['没院子', '小院', '菜园', '花园', '大庄园'],
 function upgradeCost(lineKey) { return UPGRADE_BASE_COST * S.upgrades[lineKey]; }
 const AUTO_COST = 100; // bones, one-time unlock after the first wake (placeholder)
 const DIG_RANGE = 40; // px: dog must be this close to a pit to dig it
-const WALK_SPEED = 260; // px/s: player-directed and auto walking (retuned for the 960-wide map)
-const DOG_X_MIN = 75, DOG_X_MAX = 885; // dog box half-width 75 on the 960-wide map
-const DOG_Y_MIN = 430, DOG_Y_MAX = 550; // feet y on the ground band (ground is y 400-600)
+const WALK_SPEED = 260; // px/s: player-directed and auto walking (placeholder; 1280-wide map takes ~5s to cross)
+const DOG_X_MIN = 75, DOG_X_MAX = 1205; // dog box half-width 75 on the 1280-wide field
+const DOG_Y_MIN = 160, DOG_Y_MAX = 790; // feet y across the whole field (box top 10..640, 10px margins)
 const CODEX_NEW_BONUS = 50; // D10 placeholder
 const SHORT_DREAM_S = 180; // dreams under 3 minutes settle at 20%
 const GLITCH_TAPS = 999; // taps before the small chance starts
@@ -133,13 +133,13 @@ let lastBuryLog = '';
 let scentsRevealed = false;
 
 // Interaction pass (visual feedback only — no rules live here).
-// Dog position is visible state on the 960x600 canvas: the dog box is
-// 150x150, dogX is the box CENTER x, dogY is the FEET y on the ground
-// band (430-550). D23: the dog walks the ground freely (WASD +
+// Dog position is visible state on the 1280x800 canvas: the dog box is
+// 150x150, dogX is the box CENTER x, dogY is the FEET y anywhere on
+// the field (160-790). D26: the dog roams the whole field (WASD +
 // C mouse-follow; touch tap-to-move only); scent points are world
 // pits it walks up to and digs by standing there.
 const DOG_BOX = 150;
-let dogX = 480, dogY = 490, dogPauseUntil = 0, dogMicroX = null;
+let dogX = 640, dogY = 400, dogPauseUntil = 0, dogMicroX = null;
 let dogSpeedPxS = 0; // D19: current movement speed (0 idle, 55 wander, 320 run)
 let holes = []; // {x} — dig pits dug this dream, drawn on the ground
 let particles = []; // {kind:'dirt'|'heart', x, y, vx, vy, born, life}
@@ -311,7 +311,7 @@ return p && Math.hypot(p.x - dogX, p.y - dogY) <= DIG_RANGE ? p : null;
 function wander(now, dt) {
 if (now < dogPauseUntil) { dogSpeedPxS = 0; return; }
 if (!dogWander) {
-dogWander = { x: 150 + Math.random() * 660,
+dogWander = { x: 150 + Math.random() * 980,
 y: DOG_Y_MIN + Math.random() * (DOG_Y_MAX - DOG_Y_MIN) };
 dogSpeedPxS = 0;
 return;
@@ -404,12 +404,12 @@ doDig(pit);
 function drawScene() {
 const pal = scenePalette();
 const now = Date.now();
-ctx.fillStyle = pal.sky;
-ctx.fillRect(0, 0, canvas.width, canvas.height);
+// D26 top-down field: the whole canvas is ground color (pal.sky is
+// kept in the palette for the future background art, not used here).
 ctx.fillStyle = pal.ground;
-ctx.fillRect(0, 400, canvas.width, canvas.height - 400);
+ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-// Pit markers on the ground (visible targets the dog walks up to).
+// Pit markers on the field (visible targets the dog walks up to).
 // Colors: strong amber, light green, strange purple; the pit in dig
 // range gets a ring so the player knows standing here digs it.
 if (scentsRevealed) {
@@ -451,7 +451,7 @@ ctx.fill();
 if (S.bones > 0) {
 const n = Math.min(8, 1 + Math.floor(S.bones / 5));
 for (let i = 0; i < n; i++) {
-drawBonePixel(ctx, 845 + (i % 3) * 16, 565 + Math.floor(i / 3) * 10, 2, 'plain');
+drawBonePixel(ctx, 1170 + (i % 3) * 16, 735 + Math.floor(i / 3) * 10, 2, 'plain');
 }
 }
 
@@ -513,7 +513,7 @@ ctx.fill();
 if (S.meteorNight) {
 ctx.fillStyle = '#ffe97a';
 for (let i = 0; i < 8; i++) {
-const x = 20 + ((i * 53) % 900);
+const x = 20 + ((i * 53) % 1200);
 const y = 12 + ((i * 29) % 60);
 ctx.fillRect(x, y, 3, 3);
 }
@@ -613,12 +613,12 @@ for (let i = types.length - 1; i > 0; i--) {
 const j = Math.floor(Math.random() * (i + 1));
 [types[i], types[j]] = [types[j], types[i]];
 }
-// Each pit gets a ground position (spread across the ground band)
+// Each pit gets a field position (spread across the whole field)
 // so the dog has somewhere visible to walk to.
-const SCENT_SPOTS = [180, 480, 780];
+const SCENT_SPOTS = [220, 640, 1060];
 scentPoints = types.map((t, i) => ({ type: t,...SCENT_TYPES[t],
 x: SCENT_SPOTS[i] + Math.floor(Math.random() * 20) - 10,
-y: 440 + Math.floor(Math.random() * 101) }));
+y: 120 + Math.floor(Math.random() * 561) }));
 }
 
 let lastSniffAt = 0; // drives the sniff pulse in js/art.js (not a rule)
@@ -668,7 +668,7 @@ particles.push({ kind: 'dirt', x: dogX, y: dogY - 5,
 vx: -120 + Math.random() * 240, vy: -190 + Math.random() * 110,
 born: now, life: 1100 });
 }
-flyingBones.push({ x0: dogX, y0: dogY - 15, x1: 915, y1: 18,
+flyingBones.push({ x0: dogX, y0: dogY - 15, x1: 1230, y1: 18,
 born: now, dur: 1200, tier: boneTierFor(got, lastDigRare) });
 S.bones += got;
 S.totalBonesThisDream += got;
@@ -856,7 +856,7 @@ scentsRevealed = false;
 // Fresh dream, fresh ground: pits, particles and flying bones reset,
 // and the dog starts back at the center of the scene.
 holes = []; particles = []; flyingBones = [];
-dogX = 480; dogY = 490; dogTarget = null; dogWander = null;
+dogX = 640; dogY = 400; dogTarget = null; dogWander = null;
 followMode = false; pointerPos = null;
 dogPauseUntil = 0; dogMicroX = null; autoOn = false;
 petReactUntil = 0; petWagUntil = 0;
